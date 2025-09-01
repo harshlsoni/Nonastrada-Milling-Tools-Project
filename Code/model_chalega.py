@@ -487,6 +487,180 @@ class MultiTrainer:
         
         print("Training curves saved as 'model_comparison.png'")
     
+    def save_detailed_results_to_csv(self):
+        """Save detailed epoch-wise results to CSV files"""
+        if not self.results:
+            print("No results to save. Train models first.")
+            return
+        
+        # Create results directory if it doesn't exist
+        os.makedirs('training_results', exist_ok=True)
+        
+        # Save epoch-wise results for each model
+        for model_name, results in self.results.items():
+            epoch_data = []
+            for epoch in range(self.epochs):
+                epoch_data.append({
+                    'Model': model_name,
+                    'Epoch': epoch + 1,
+                    'Train_Loss': results['train_losses'][epoch],
+                    'Train_Accuracy': results['train_accs'][epoch],
+                    'Val_Loss': results['val_losses'][epoch],
+                    'Val_Accuracy': results['val_accs'][epoch],
+                    'Epoch_Time_Seconds': results['training_times'][epoch]
+                })
+            
+            # Save individual model results
+            df_model = pd.DataFrame(epoch_data)
+            csv_filename = f'training_results/{model_name}_detailed_results.csv'
+            df_model.to_csv(csv_filename, index=False)
+            print(f"✅ Saved {model_name} detailed results to {csv_filename}")
+        
+        # Save combined results
+        all_data = []
+        for model_name, results in self.results.items():
+            for epoch in range(self.epochs):
+                all_data.append({
+                    'Model': model_name,
+                    'Epoch': epoch + 1,
+                    'Train_Loss': results['train_losses'][epoch],
+                    'Train_Accuracy': results['train_accs'][epoch],
+                    'Val_Loss': results['val_losses'][epoch],
+                    'Val_Accuracy': results['val_accs'][epoch],
+                    'Epoch_Time_Seconds': results['training_times'][epoch]
+                })
+        
+        df_combined = pd.DataFrame(all_data)
+        combined_filename = 'training_results/all_models_detailed_results.csv'
+        df_combined.to_csv(combined_filename, index=False)
+        print(f"✅ Saved combined detailed results to {combined_filename}")
+        
+        # Save summary results
+        summary_data = []
+        for model_name, results in self.results.items():
+            summary_data.append({
+                'Model': model_name,
+                'Best_Val_Accuracy': results['best_val_acc'],
+                'Final_Val_Accuracy': results['final_val_acc'],
+                'Best_Train_Accuracy': max(results['train_accs']),
+                'Final_Train_Accuracy': results['train_accs'][-1],
+                'Min_Train_Loss': min(results['train_losses']),
+                'Final_Train_Loss': results['train_losses'][-1],
+                'Min_Val_Loss': min(results['val_losses']),
+                'Final_Val_Loss': results['val_losses'][-1],
+                'Total_Training_Time_Seconds': results['total_time'],
+                'Average_Epoch_Time_Seconds': results['total_time'] / self.epochs,
+                'Total_Parameters': sum(p.numel() for p in self.models[model_name].parameters()),
+                'Trainable_Parameters': sum(p.numel() for p in self.models[model_name].parameters() if p.requires_grad)
+            })
+        
+        df_summary = pd.DataFrame(summary_data)
+        summary_filename = 'training_results/models_summary_results.csv'
+        df_summary.to_csv(summary_filename, index=False)
+        print(f"✅ Saved summary results to {summary_filename}")
+        
+        return df_combined, df_summary
+    
+    def save_trained_models(self):
+        """Save all trained models with their state dictionaries and metadata"""
+        if not self.results:
+            print("No trained models to save. Train models first.")
+            return
+        
+        # Create models directory if it doesn't exist
+        os.makedirs('saved_models', exist_ok=True)
+        
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        
+        for model_name, model in self.models.items():
+            # Prepare model save data
+            model_save_data = {
+                'model_state_dict': model.state_dict(),
+                'model_name': model_name,
+                'num_classes': self.num_classes,
+                'epochs_trained': self.epochs,
+                'device': str(self.device),
+                'optimizer_state_dict': self.optimizers[model_name].state_dict(),
+                'training_results': self.results[model_name] if model_name in self.results else None,
+                'timestamp': timestamp,
+                'model_architecture': str(model)
+            }
+            
+            # Save model
+            model_filename = f'saved_models/{model_name}_{timestamp}.pth'
+            torch.save(model_save_data, model_filename)
+            print(f"✅ Saved {model_name} to {model_filename}")
+            
+            # Save model architecture as text file
+            arch_filename = f'saved_models/{model_name}_{timestamp}_architecture.txt'
+            with open(arch_filename, 'w') as f:
+                f.write(f"Model: {model_name}\n")
+                f.write(f"Timestamp: {timestamp}\n")
+                f.write(f"Number of Classes: {self.num_classes}\n")
+                f.write(f"Epochs Trained: {self.epochs}\n")
+                f.write(f"Device: {self.device}\n")
+                f.write(f"Total Parameters: {sum(p.numel() for p in model.parameters()):,}\n")
+                f.write(f"Trainable Parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}\n")
+                if model_name in self.results:
+                    f.write(f"Best Validation Accuracy: {self.results[model_name]['best_val_acc']:.4f}\n")
+                    f.write(f"Final Validation Accuracy: {self.results[model_name]['final_val_acc']:.4f}\n")
+                f.write(f"\nModel Architecture:\n{str(model)}\n")
+            
+            print(f"✅ Saved {model_name} architecture to {arch_filename}")
+        
+        # Create a loading script
+        loading_script = f'''# Model Loading Script - Generated on {timestamp}
+import torch
+import torch.nn as nn
+import torchvision.models as models
+
+# Model class definitions (copy these from your original script)
+# ... (include your model class definitions here)
+
+def load_model(model_path, model_class, num_classes):
+    """
+    Load a saved model
+    
+    Args:
+        model_path (str): Path to the saved model file
+        model_class: The model class (e.g., ResNetMultiModal)
+        num_classes (int): Number of classes
+    
+    Returns:
+        model: Loaded model
+        metadata: Model metadata
+    """
+    # Load the saved data
+    checkpoint = torch.load(model_path, map_location='cpu')
+    
+    # Initialize the model
+    model = model_class(num_classes)
+    
+    # Load the state dictionary
+    model.load_state_dict(checkpoint['model_state_dict'])
+    
+    # Set to evaluation mode
+    model.eval()
+    
+    print(f"Loaded model: {{checkpoint['model_name']}}")
+    print(f"Trained for: {{checkpoint['epochs_trained']}} epochs")
+    if checkpoint['training_results']:
+        print(f"Best validation accuracy: {{checkpoint['training_results']['best_val_acc']:.4f}}")
+    
+    return model, checkpoint
+
+# Example usage:
+# model, metadata = load_model('saved_models/ResNet18_{timestamp}.pth', ResNetMultiModal, 3)
+'''
+        
+        script_filename = f'saved_models/load_models_{timestamp}.py'
+        with open(script_filename, 'w') as f:
+            f.write(loading_script)
+        
+        print(f"✅ Created model loading script: {script_filename}")
+        print(f"\n📁 All models saved in 'saved_models/' directory")
+        print(f"📊 All training results saved in 'training_results/' directory")
+    
     def get_model_summary(self):
         """Get parameter count and model size for each model"""
         print("\n" + "="*60)
@@ -532,7 +706,7 @@ if __name__ == "__main__":
     trainer.get_model_summary()
     
     # Choose training mode: 'parallel' or 'sequential'
-    training_mode = 'parallel'  # Change to 'parallel' for parallel training
+    training_mode = 'seq'  # Change to 'parallel' for parallel training
     
     if training_mode == 'parallel':
         # Train all models in parallel (faster but uses more GPU memory)
@@ -549,8 +723,30 @@ if __name__ == "__main__":
     # Plot training curves
     trainer.plot_training_curves()
     
-    # Optional: Save results to CSV
+    # Save detailed results to CSV files
+    print("\n" + "="*60)
+    print("SAVING DETAILED RESULTS")
+    print("="*60)
+    detailed_df, summary_df = trainer.save_detailed_results_to_csv()
+    
+    # Save trained models
+    print("\n" + "="*60)
+    print("SAVING TRAINED MODELS")
+    print("="*60)
+    trainer.save_trained_models()
+    
+    # Save basic comparison results (keeping original functionality)
     df_comparison = pd.DataFrame(comparison)
     df_comparison.to_csv('model_comparison_results.csv', index=False)
-    print("\nResults saved to 'model_comparison_results.csv'")
+    print(f"\n✅ Basic comparison results saved to 'model_comparison_results.csv'")
+    
+    print("\n" + "="*80)
+    print("🎉 TRAINING COMPLETE!")
+    print("="*80)
+    print("📊 Results saved in:")
+    print("   - training_results/ (detailed CSV files)")
+    print("   - saved_models/ (trained models + loading script)")
+    print("   - model_comparison.png (training curves)")
+    print("   - model_comparison_results.csv (basic comparison)")
+    print("="*80)
         
