@@ -10,19 +10,19 @@ class AlexNetMultiModal(nn.Module):
         # Load pretrained AlexNet and remove final classification layer
         self.backbone = models.alexnet(pretrained=pretrained)
         self.feature_dim = self.backbone.classifier[6].in_features
-        self.backbone.classifier[6] = nn.Identity()  # Remove final FC layer
+        self.backbone.classifier = nn.Identity()  # Remove final classifier completely
         
-        # Freeze all CNN layers except the last CNN block (features[10], features[12])
+        # Freeze all CNN layers except the last TWO CNN blocks (features[6], features[8], features[10])
+        # Note: AlexNet has conv layers at indices 0, 3, 6, 8, 10 (features.12 is MaxPool2d)
         for name, param in self.backbone.named_parameters():
-            if 'features.10' in name or 'features.12' in name:  # Last conv layers
-                param.requires_grad = True
-            elif 'classifier' in name:  # Keep classifier layers trainable
+            if 'features.6' in name or 'features.8' in name or 'features.10' in name:  # Last THREE conv layers
                 param.requires_grad = True
             else:
                 param.requires_grad = False
         
-        print("AlexNet: Frozen all CNN layers except features.10 and features.12 (last CNN blocks)")
-        
+        print("AlexNet: Frozen all CNN layers except features.6, features.8 and features.10 (last TWO+ CNN blocks)")
+        for name, param in self.backbone.named_parameters():
+            print(name, param.requires_grad)
         # Fusion layer for 9 modalities
         self.fusion_fc = nn.Sequential(
             nn.Linear(9 * self.feature_dim, 1024),

@@ -10,18 +10,17 @@ class VGG16MultiModal(nn.Module):
         # Load pretrained VGG16 and remove final classification layer
         self.backbone = models.vgg16(pretrained=pretrained)
         self.feature_dim = self.backbone.classifier[6].in_features
-        self.backbone.classifier[6] = nn.Identity()  # Remove final FC layer
+        self.backbone.classifier = nn.Identity()  # Remove final classifier completely
         
-        # Freeze all CNN layers except the last CNN block (features[28], features[30])
+        # Freeze all CNN layers except the last TWO CNN blocks (features[24], features[26], features[28])
+        # Note: VGG16 has conv layers at indices 0,2,5,7,10,12,14,17,19,21,24,26,28 (features.30 is MaxPool2d)
         for name, param in self.backbone.named_parameters():
-            if 'features.28' in name or 'features.30' in name:  # Last conv layers
-                param.requires_grad = True
-            elif 'classifier' in name:  # Keep classifier layers trainable
+            if 'features.24' in name or 'features.26' in name or 'features.28' in name:  # Last THREE conv layers
                 param.requires_grad = True
             else:
                 param.requires_grad = False
         
-        print("VGG16: Frozen all CNN layers except features.28 and features.30 (last CNN blocks)")
+        print("VGG16: Frozen all CNN layers except features.24, features.26 and features.28 (last TWO+ CNN blocks)")
         
         # Fusion layer for 9 modalities
         self.fusion_fc = nn.Sequential(

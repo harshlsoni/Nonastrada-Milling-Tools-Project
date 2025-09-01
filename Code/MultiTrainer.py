@@ -41,14 +41,14 @@ class MultiTrainer:
         self.early_stopping_patience = early_stopping_patience
         self.results = {}
         
-        # Initialize all models (all now have frozen CNN layers except last block)
+        # Initialize all models (all now have frozen CNN layers except last TWO blocks)
         self.models = {
-            'Custom_CNN_LastBlock': Network(num_classes),
-            'ResNet18_LastBlock': ResNetMultiModal(num_classes),
-            'EfficientNet_LastBlock': EfficientNetMultiModal(num_classes),
-            'MobileNet_LastBlock': MobileNetMultiModal(num_classes),
-            'AlexNet_LastBlock': AlexNetMultiModal(num_classes),
-            'VGG16_LastBlock': VGG16MultiModal(num_classes)
+            'Custom_CNN': Network(num_classes),  # Custom CNN unchanged
+            'ResNet18_Last2Blocks': ResNetMultiModal(num_classes),
+            'EfficientNet_Last2Blocks': EfficientNetMultiModal(num_classes),
+            'MobileNet_Last2Blocks': MobileNetMultiModal(num_classes),
+            'AlexNet_Last2Blocks': AlexNetMultiModal(num_classes),
+            'VGG16_Last2Blocks': VGG16MultiModal(num_classes)
         }
         
         # Move models to device and setup optimizers
@@ -553,12 +553,12 @@ class MultiTrainer:
         
         # Get the model class
         model_class_map = {
-            'Custom_CNN_LastBlock': Network,
-            'ResNet18_LastBlock': ResNetMultiModal,
-            'EfficientNet_LastBlock': EfficientNetMultiModal,
-            'MobileNet_LastBlock': MobileNetMultiModal,
-            'AlexNet_LastBlock': AlexNetMultiModal,
-            'VGG16_LastBlock': VGG16MultiModal
+            'Custom_CNN': Network,
+            'ResNet18_Last2Blocks': ResNetMultiModal,
+            'EfficientNet_Last2Blocks': EfficientNetMultiModal,
+            'MobileNet_Last2Blocks': MobileNetMultiModal,
+            'AlexNet_Last2Blocks': AlexNetMultiModal,
+            'VGG16_Last2Blocks': VGG16MultiModal
         }
         
         model_class = model_class_map[best_model_name]

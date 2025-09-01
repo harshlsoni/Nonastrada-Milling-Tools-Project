@@ -6,10 +6,11 @@ This document summarizes the major improvements made to the multi-modal milling 
 ## 🚀 New Features Added
 
 ### 🧊 Selective Layer Freezing Strategy
-**Applied to ALL architectures for optimal transfer learning:**
+**Applied to ALL pretrained architectures (except Custom CNN):**
 
 - **Early CNN Layers**: Frozen (retain low-level feature extraction from pretrained weights)
-- **Last CNN Block**: Trainable (adapt high-level features to milling dataset)
+- **Last TWO CNN Blocks**: Trainable (adapt high-level features to milling dataset)
+- **Classifier Heads**: Completely removed (backbone only)
 - **Fusion Layers**: Always trainable (learn multi-modal feature combination)
 
 **Benefits:**
@@ -25,42 +26,48 @@ This document summarizes the major improvements made to the multi-modal milling 
 ### 2. Enhanced Neural Network Architectures
 All architectures now use **transfer learning with selective fine-tuning**:
 
-#### Freezing Strategy Applied to All Models:
-- **CNN Layers**: All frozen except the **last CNN block**
+#### Freezing Strategy Applied to All Models (except Custom CNN):
+- **CNN Layers**: All frozen except the **last TWO CNN blocks**
+- **Classifier Heads**: Completely removed (using backbone only)
 - **Fusion Layers**: Always trainable
 - **Benefits**: Faster training, reduced overfitting, better generalization
 
 #### Architecture Details:
 
-**Custom CNN (Last Block Trainable)**
+**Custom CNN (Unchanged)**
 - **File**: `Code/network_architecture/custom_cnn.py`
-- **Frozen**: conv1, conv2 layers
-- **Trainable**: conv3 (last CNN block) + fusion layers
+- **Status**: All layers trainable (no freezing applied)
+- **Trainable**: All conv layers + fusion layers
 
-**ResNet18 (Last Block Trainable)**
+**ResNet18 (Last TWO Blocks Trainable)**
 - **File**: `Code/network_architecture/resnet_multimodal.py`
-- **Frozen**: All layers except layer4
-- **Trainable**: layer4 (last CNN block) + fusion layers
+- **Frozen**: All layers except layer3 and layer4
+- **Trainable**: layer3, layer4 (last TWO CNN blocks) + fusion layers
+- **Classifier**: Completely removed (backbone only)
 
-**EfficientNet-B0 (Last Block Trainable)**
+**EfficientNet-B0 (Last TWO+ Blocks Trainable)**
 - **File**: `Code/network_architecture/efficientnet_multimodal.py`
-- **Frozen**: All layers except features.7 and features.8
-- **Trainable**: features.7, features.8 (last CNN blocks) + fusion layers
+- **Frozen**: All layers except features.6, features.7 and features.8
+- **Trainable**: features.6, features.7, features.8 (last TWO+ CNN blocks) + fusion layers
+- **Classifier**: Completely removed (backbone only)
 
-**MobileNetV2 (Last Block Trainable)**
+**MobileNetV2 (Last TWO+ Blocks Trainable)**
 - **File**: `Code/network_architecture/mobilenet_multimodal.py`
-- **Frozen**: All layers except features.17 and features.18
-- **Trainable**: features.17, features.18 (last CNN blocks) + fusion layers
+- **Frozen**: All layers except features.16, features.17 and features.18
+- **Trainable**: features.16, features.17, features.18 (last TWO+ CNN blocks) + fusion layers
+- **Classifier**: Completely removed (backbone only)
 
-**AlexNet (Last Block Trainable)**
+**AlexNet (Last TWO+ Blocks Trainable)**
 - **File**: `Code/network_architecture/alexnet_multimodal.py`
-- **Frozen**: All CNN layers except features.10 and features.12
-- **Trainable**: features.10, features.12 (last CNN blocks) + classifier + fusion layers
+- **Frozen**: All CNN layers except features.6, features.8 and features.10
+- **Trainable**: features.6, features.8, features.10 (last THREE conv layers) + fusion layers
+- **Classifier**: Completely removed (backbone only)
 
-**VGG16 (Last Block Trainable)**
+**VGG16 (Last TWO+ Blocks Trainable)**
 - **File**: `Code/network_architecture/vgg16_multimodal.py`
-- **Frozen**: All CNN layers except features.28 and features.30
-- **Trainable**: features.28, features.30 (last CNN blocks) + classifier + fusion layers
+- **Frozen**: All CNN layers except features.24, features.26 and features.28
+- **Trainable**: features.24, features.26, features.28 (last THREE conv layers) + fusion layers
+- **Classifier**: Completely removed (backbone only)
 
 ### 3. Early Stopping Implementation
 - **File**: `Code/early_stopping.py`
@@ -91,12 +98,12 @@ Updated `MultiTrainer.py` with:
 ## 📊 Training Process Flow
 
 ### Phase 1: Multi-Architecture Training
-1. **Custom CNN (Last Block)** - Custom architecture with selective freezing
-2. **ResNet18 (Last Block)** - Pretrained ResNet18 with layer4 trainable
-3. **EfficientNet-B0 (Last Block)** - Pretrained EfficientNet with last blocks trainable
-4. **MobileNetV2 (Last Block)** - Pretrained MobileNet with last blocks trainable
-5. **AlexNet (Last Block)** - Pretrained AlexNet with last CNN blocks trainable ✨ NEW
-6. **VGG16 (Last Block)** - Pretrained VGG16 with last CNN blocks trainable ✨ NEW
+1. **Custom CNN** - Custom architecture (all layers trainable)
+2. **ResNet18 (Last 2 Blocks)** - Pretrained ResNet18 with layer3+layer4 trainable
+3. **EfficientNet-B0 (Last 2+ Blocks)** - Pretrained EfficientNet with last 3 blocks trainable
+4. **MobileNetV2 (Last 2+ Blocks)** - Pretrained MobileNet with last 3 blocks trainable
+5. **AlexNet (Last 2 Blocks)** - Pretrained AlexNet with last 3 CNN layers trainable ✨ NEW
+6. **VGG16 (Last 2 Blocks)** - Pretrained VGG16 with last 3 CNN layers trainable ✨ NEW
 
 ### Phase 2: Model Comparison
 - Automatic comparison of all trained models

@@ -12,14 +12,14 @@ class ResNetMultiModal(nn.Module):
         self.feature_dim = self.backbone.fc.in_features
         self.backbone.fc = nn.Identity()  # Remove final FC layer
         
-        # Freeze all layers except the last CNN block (layer4)
+        # Freeze all layers except the last TWO CNN blocks (layer3 and layer4)
         for name, param in self.backbone.named_parameters():
-            if 'layer4' not in name:  # Freeze everything except layer4 (last CNN block)
-                param.requires_grad = False
-            else:
+            if 'layer3' in name or 'layer4' in name:  # Unfreeze last two CNN blocks
                 param.requires_grad = True
+            else:
+                param.requires_grad = False
         
-        print("ResNet18: Frozen all layers except layer4 (last CNN block)")
+        print("ResNet18: Frozen all layers except layer3 and layer4 (last TWO CNN blocks)")
         
         # Fusion layer for 9 modalities
         self.fusion_fc = nn.Sequential(

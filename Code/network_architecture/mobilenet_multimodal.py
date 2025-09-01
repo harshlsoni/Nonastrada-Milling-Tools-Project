@@ -10,16 +10,16 @@ class MobileNetMultiModal(nn.Module):
         # Load pretrained MobileNetV2
         self.backbone = models.mobilenet_v2(pretrained=pretrained)
         self.feature_dim = self.backbone.classifier[1].in_features
-        self.backbone.classifier = nn.Identity()  # Remove final classifier
+        self.backbone.classifier = nn.Identity()  # Remove final classifier completely
         
-        # Freeze all layers except the last CNN blocks (features[17] and features[18])
+        # Freeze all layers except the last TWO CNN blocks (features[16], features[17] and features[18])
         for name, param in self.backbone.named_parameters():
-            if 'features.17' in name or 'features.18' in name:  # Last two inverted residual blocks
+            if 'features.16' in name or 'features.17' in name or 'features.18' in name:  # Last three inverted residual blocks
                 param.requires_grad = True
             else:
                 param.requires_grad = False
         
-        print("MobileNetV2: Frozen all layers except features.17 and features.18 (last CNN blocks)")
+        print("MobileNetV2: Frozen all layers except features.16, features.17 and features.18 (last TWO+ CNN blocks)")
         
         # Fusion layer for 9 modalities
         self.fusion_fc = nn.Sequential(

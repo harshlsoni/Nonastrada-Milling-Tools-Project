@@ -10,16 +10,16 @@ class EfficientNetMultiModal(nn.Module):
         # Load pretrained EfficientNet-B0
         self.backbone = models.efficientnet_b0(pretrained=pretrained)
         self.feature_dim = self.backbone.classifier[1].in_features
-        self.backbone.classifier = nn.Identity()  # Remove final classifier
+        self.backbone.classifier = nn.Identity()  # Remove final classifier completely
         
-        # Freeze all layers except the last CNN block (features[7] and features[8])
+        # Freeze all layers except the last TWO CNN blocks (features[6], features[7], and features[8])
         for name, param in self.backbone.named_parameters():
-            if 'features.7' in name or 'features.8' in name:  # Last two blocks
+            if 'features.6' in name or 'features.7' in name or 'features.8' in name:  # Last three blocks for better coverage
                 param.requires_grad = True
             else:
                 param.requires_grad = False
         
-        print("EfficientNet-B0: Frozen all layers except features.7 and features.8 (last CNN blocks)")
+        print("EfficientNet-B0: Frozen all layers except features.6, features.7 and features.8 (last TWO+ CNN blocks)")
         
         # Fusion layer for 9 modalities
         self.fusion_fc = nn.Sequential(
