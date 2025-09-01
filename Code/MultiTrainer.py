@@ -5,9 +5,14 @@ import pandas as pd
 import torch.optim as optim
 import time
 import matplotlib.pyplot as plt
+import warnings
 from concurrent.futures import ThreadPoolExecutor
 
-from network_architecture import Network, ResNetMultiModal, EfficientNetMultiModal, MobileNetMultiModal
+from network_architecture import Network, ResNetMultiModal, EfficientNetMultiModal, MobileNetMultiModal, AlexNetMultiModal, VGG16MultiModal
+from early_stopping import EarlyStopping
+
+# Ignore warnings
+warnings.filterwarnings('ignore')
 
 
 class MultiTrainer:
@@ -16,7 +21,7 @@ class MultiTrainer:
     on multi-modal milling dataset classification tasks.
     """
     
-    def __init__(self, train_loader, val_loader, num_classes, device, epochs=10):
+    def __init__(self, train_loader, val_loader, num_classes, device, epochs=10, early_stopping_patience=10):
         """
         Initialize the MultiTrainer with data loaders and training parameters.
         
@@ -26,36 +31,43 @@ class MultiTrainer:
             num_classes (int): Number of classes for classification
             device: PyTorch device (cuda/cpu)
             epochs (int): Number of training epochs
+            early_stopping_patience (int): Patience for early stopping
         """
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.num_classes = num_classes
         self.device = device
         self.epochs = epochs
+        self.early_stopping_patience = early_stopping_patience
         self.results = {}
         
-        # Initialize all models
+        # Initialize all models (all now have frozen CNN layers except last block)
         self.models = {
-            'Custom_CNN': Network(num_classes),
-            'ResNet18': ResNetMultiModal(num_classes),
-            'EfficientNet': EfficientNetMultiModal(num_classes),
-            'MobileNet': MobileNetMultiModal(num_classes)
+            'Custom_CNN_LastBlock': Network(num_classes),
+            'ResNet18_LastBlock': ResNetMultiModal(num_classes),
+            'EfficientNet_LastBlock': EfficientNetMultiModal(num_classes),
+            'MobileNet_LastBlock': MobileNetMultiModal(num_classes),
+            'AlexNet_LastBlock': AlexNetMultiModal(num_classes),
+            'VGG16_LastBlock': VGG16MultiModal(num_classes)
         }
         
         # Move models to device and setup optimizers
         self.optimizers = {}
         self.criterions = {}
+        self.early_stoppers = {}
         
         for name, model in self.models.items():
             model.to(device)
             self.optimizers[name] = optim.Adam(model.parameters(), lr=1e-4)
             self.criterions[name] = nn.CrossEntropyLoss()
+            self.early_stoppers[name] = EarlyStopping(patience=early_stopping_patience, verbose=True)
     
     def train_single_model(self, model_name):
         """Train a single model and return its results"""
         model = self.models[model_name]
         optimizer = self.optimizers[model_name]
         criterion = self.criterions[model_name]
+        early_stopping = self.early_stoppers[model_name]
         
         train_losses, train_accs = [], []
         val_losses, val_accs = [], []
@@ -84,6 +96,12 @@ class MultiTrainer:
                   f"Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f} | "
                   f"Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f} | "
                   f"Time: {epoch_time:.2f}s")
+            
+            # Early stopping check
+            early_stopping(val_loss, model)
+            if early_stopping.early_stop:
+                print(f"Early stopping triggered for {model_name} at epoch {epoch+1}")
+                break
         
         return {
             'train_losses': train_losses,
@@ -93,7 +111,9 @@ class MultiTrainer:
             'training_times': training_times,
             'total_time': sum(training_times),
             'best_val_acc': max(val_accs),
-            'final_val_acc': val_accs[-1]
+            'final_val_acc': val_accs[-1],
+            'epochs_trained': len(train_losses),
+            'early_stopped': early_stopping.early_stop
         }
     
     def _train_epoch(self, model, optimizer, criterion):
@@ -400,45 +420,45 @@ class MultiTrainer:
         
         # Create a loading script
         loading_script = f'''# Model Loading Script - Generated on {timestamp}
-import torch
-import torch.nn as nn
-from network_architecture import Network, ResNetMultiModal, EfficientNetMultiModal, MobileNetMultiModal
+        import torch
+        import torch.nn as nn
+        from network_architecture import Network, ResNetMultiModal, EfficientNetMultiModal, MobileNetMultiModal
 
-def load_model(model_path, model_class, num_classes):
-    """
-    Load a saved model
-    
-    Args:
-        model_path (str): Path to the saved model file
-        model_class: The model class (e.g., ResNetMultiModal)
-        num_classes (int): Number of classes
-    
-    Returns:
-        model: Loaded model
-        metadata: Model metadata
-    """
-    # Load the saved data
-    checkpoint = torch.load(model_path, map_location='cpu')
-    
-    # Initialize the model
-    model = model_class(num_classes)
-    
-    # Load the state dictionary
-    model.load_state_dict(checkpoint['model_state_dict'])
-    
-    # Set to evaluation mode
-    model.eval()
-    
-    print(f"Loaded model: {{checkpoint['model_name']}}")
-    print(f"Trained for: {{checkpoint['epochs_trained']}} epochs")
-    if checkpoint['training_results']:
-        print(f"Best validation accuracy: {{checkpoint['training_results']['best_val_acc']:.4f}}")
-    
-    return model, checkpoint
+        def load_model(model_path, model_class, num_classes):
+            """
+            Load a saved model
+            
+            Args:
+                model_path (str): Path to the saved model file
+                model_class: The model class (e.g., ResNetMultiModal)
+                num_classes (int): Number of classes
+            
+            Returns:
+                model: Loaded model
+                metadata: Model metadata
+            """
+            # Load the saved data
+            checkpoint = torch.load(model_path, map_location='cpu')
+            
+            # Initialize the model
+            model = model_class(num_classes)
+            
+            # Load the state dictionary
+            model.load_state_dict(checkpoint['model_state_dict'])
+            
+            # Set to evaluation mode
+            model.eval()
+            
+            print(f"Loaded model: {{checkpoint['model_name']}}")
+            print(f"Trained for: {{checkpoint['epochs_trained']}} epochs")
+            if checkpoint['training_results']:
+                print(f"Best validation accuracy: {{checkpoint['training_results']['best_val_acc']:.4f}}")
+            
+            return model, checkpoint
 
-# Example usage:
-# model, metadata = load_model('saved_models/ResNet18_{timestamp}.pth', ResNetMultiModal, 3)
-'''
+        # Example usage:
+        # model, metadata = load_model('saved_models/ResNet18_{timestamp}.pth', ResNetMultiModal, 3)
+        '''
         
         script_filename = f'saved_models/load_models_{timestamp}.py'
         with open(script_filename, 'w') as f:
@@ -505,3 +525,68 @@ def load_model(model_path, model_class, num_classes):
         print(f"   Training time: {best_results['total_time']:.2f}s")
         
         return best_model, best_model_name, best_results
+    
+    def tune_best_model_hyperparameters(self, max_trials=20, max_epochs=50, patience=15):
+        """
+        Perform hyperparameter tuning on the best performing model
+        
+        Args:
+            max_trials: Maximum number of hyperparameter configurations to try
+            max_epochs: Maximum epochs per configuration
+            patience: Early stopping patience for hyperparameter tuning
+            
+        Returns:
+            Best hyperparameter configuration and results
+        """
+        if not self.results:
+            print("❌ No results available. Train models first.")
+            return None
+        
+        # Get the best model
+        _, best_model_name, _ = self.get_best_model()
+        
+        print(f"\n🎯 Starting hyperparameter tuning for {best_model_name}...")
+        print("="*60)
+        
+        # Import hyperparameter tuner
+        from hyperparameter_tuner import HyperparameterTuner
+        
+        # Get the model class
+        model_class_map = {
+            'Custom_CNN_LastBlock': Network,
+            'ResNet18_LastBlock': ResNetMultiModal,
+            'EfficientNet_LastBlock': EfficientNetMultiModal,
+            'MobileNet_LastBlock': MobileNetMultiModal,
+            'AlexNet_LastBlock': AlexNetMultiModal,
+            'VGG16_LastBlock': VGG16MultiModal
+        }
+        
+        model_class = model_class_map[best_model_name]
+        
+        # Initialize tuner
+        tuner = HyperparameterTuner(
+            model_class=model_class,
+            train_loader=self.train_loader,
+            val_loader=self.val_loader,
+            num_classes=self.num_classes,
+            device=self.device
+        )
+        
+        # Perform hyperparameter tuning
+        best_config, best_score, all_results = tuner.tune_hyperparameters(
+            max_trials=max_trials,
+            max_epochs=max_epochs,
+            patience=patience
+        )
+        
+        # Save results
+        tuning_df = tuner.save_tuning_results(f'{best_model_name}_hyperparameter_tuning_results.csv')
+        
+        print(f"\n🏆 HYPERPARAMETER TUNING COMPLETE!")
+        print("="*60)
+        print(f"Best model: {best_model_name}")
+        print(f"Best configuration: {best_config}")
+        print(f"Best validation accuracy: {best_score:.4f}")
+        print(f"Results saved to: {best_model_name}_hyperparameter_tuning_results.csv")
+        
+        return best_config, best_score, all_results, tuning_df

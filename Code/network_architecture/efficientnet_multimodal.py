@@ -12,9 +12,14 @@ class EfficientNetMultiModal(nn.Module):
         self.feature_dim = self.backbone.classifier[1].in_features
         self.backbone.classifier = nn.Identity()  # Remove final classifier
         
-        # Unfreeze all layers - enable gradient computation for all parameters
-        for param in self.backbone.parameters():
-            param.requires_grad = True
+        # Freeze all layers except the last CNN block (features[7] and features[8])
+        for name, param in self.backbone.named_parameters():
+            if 'features.7' in name or 'features.8' in name:  # Last two blocks
+                param.requires_grad = True
+            else:
+                param.requires_grad = False
+        
+        print("EfficientNet-B0: Frozen all layers except features.7 and features.8 (last CNN blocks)")
         
         # Fusion layer for 9 modalities
         self.fusion_fc = nn.Sequential(
