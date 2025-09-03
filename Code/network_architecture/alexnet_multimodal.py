@@ -7,22 +7,29 @@ class AlexNetMultiModal(nn.Module):
     def __init__(self, num_classes: int, pretrained: bool = True):
         super(AlexNetMultiModal, self).__init__()
         
-        # Load pretrained AlexNet and remove final classification layer
-        self.backbone = models.alexnet(pretrained=pretrained)
-        self.feature_dim = self.backbone.classifier[6].in_features
-        self.backbone.classifier = nn.Identity()  # Remove final classifier completely
+        # Load pretrained AlexNet
+        weights = models.AlexNet_Weights.IMAGENET1K_V1 if pretrained else None
+        alexnet = models.alexnet(weights=weights)
         
-        # Freeze all CNN layers except the last TWO CNN blocks (features[6], features[8], features[10])
-        # Note: AlexNet has conv layers at indices 0, 3, 6, 8, 10 (features.12 is MaxPool2d)
+        # Extract only the feature extraction part (CNN layers)
+        self.backbone = alexnet.features
+        
+        # Calculate feature dimension after CNN layers
+        # AlexNet features output: [batch_size, 256, 6, 6] -> flattened: 256 * 6 * 6 = 9216
+        self.feature_dim = 256 * 6 * 6  # AlexNet's final conv layer output
+        
+        # Freeze all CNN layers except the last TWO CNN blocks
+        # AlexNet features: conv layers at indices 0, 3, 6, 8, 10
+        # Last TWO blocks: features[8] (conv4) and features[10] (conv5)
         for name, param in self.backbone.named_parameters():
-            if 'features.6' in name or 'features.8' in name or 'features.10' in name:  # Last THREE conv layers
+            if '8.' in name or '10.' in name:  # Last TWO conv layers (conv4 and conv5)
                 param.requires_grad = True
             else:
                 param.requires_grad = False
         
-        print("AlexNet: Frozen all CNN layers except features.6, features.8 and features.10 (last TWO+ CNN blocks)")
-        for name, param in self.backbone.named_parameters():
-            print(name, param.requires_grad)
+        # Optional: Print freezing status (can be removed for production)
+        # print("AlexNet: Frozen all CNN layers except features.8 and features.10 (last TWO CNN blocks)")
+        
         # Fusion layer for 9 modalities
         self.fusion_fc = nn.Sequential(
             nn.Linear(9 * self.feature_dim, 1024),
@@ -37,10 +44,12 @@ class AlexNetMultiModal(nn.Module):
     def forward(self, x_dict):
         features = []
         for _, x in x_dict.items():
-            feat = self.backbone(x)  # Extract features using AlexNet backbone
+            # Extract features using AlexNet backbone (CNN layers only)
+            feat = self.backbone(x)  # Output shape: [batch_size, 256, 6, 6]
+            feat = feat.view(feat.size(0), -1)  # Flatten: [batch_size, 9216]
             features.append(feat)
         
         # Concatenate features from all modalities
-        fused = torch.cat(features, dim=1)
+        fused = torch.cat(features, dim=1)  # Shape: [batch_size, 9 * 9216]
         out = self.fusion_fc(fused)
         return out

@@ -1,3 +1,4 @@
+import os
 import torch
 import warnings
 from torch.utils.data import DataLoader, random_split
@@ -11,7 +12,9 @@ warnings.filterwarnings('ignore')
 
 if __name__ == "__main__":
     # Load dataset
-    data = MultiModalMillingDataset("Files", "Files\\labels.csv", "Files\\labels_reg.csv")
+    data = MultiModalMillingDataset("Files", 
+                                   os.path.join("Files", "labels.csv"), 
+                                   os.path.join("Files", "labels_reg.csv"))
     
     # Train/Validation split
     train_size = int(0.8 * len(data))   # 80% training
@@ -43,11 +46,11 @@ if __name__ == "__main__":
     
     if training_mode == 'parallel':
         # Train all models in parallel (faster but uses more GPU memory)
-        print("\n🚀 Starting PARALLEL training...")
+        print("\nStarting PARALLEL training...")
         results = trainer.train_all_parallel()
     else:
         # Train all models sequentially (slower but more memory efficient)
-        print("\n🚀 Starting SEQUENTIAL training...")
+        print("\nStarting SEQUENTIAL training...")
         results = trainer.train_all_sequential()
     
     # Compare results
@@ -71,11 +74,11 @@ if __name__ == "__main__":
     # Save basic comparison results (keeping original functionality)
     df_comparison = pd.DataFrame(comparison)
     df_comparison.to_csv('model_comparison_results.csv', index=False)
-    print(f"\n✅ Basic comparison results saved to 'model_comparison_results.csv'")
+    print(f"\nBasic comparison results saved to 'model_comparison_results.csv'")
     
     # Hyperparameter tuning on the best model
     print("\n" + "="*80)
-    print("🎯 STARTING HYPERPARAMETER TUNING ON BEST MODEL")
+    print("STARTING HYPERPARAMETER TUNING ON BEST MODEL")
     print("="*80)
     
     try:
@@ -85,17 +88,17 @@ if __name__ == "__main__":
             patience=8      # Early stopping patience for tuning
         )
         
-        print(f"\n✅ Hyperparameter tuning completed successfully!")
-        print(f"📈 Best tuned accuracy: {best_score:.4f}")
+        print(f"\nHyperparameter tuning completed successfully!")
+        print(f"Best tuned accuracy: {best_score:.4f}")
         
     except Exception as e:
-        print(f"❌ Error during hyperparameter tuning: {e}")
+        print(f"Error during hyperparameter tuning: {e}")
         print("Continuing without hyperparameter tuning...")
     
     print("\n" + "="*80)
-    print("🎉 TRAINING COMPLETE!")
+    print("TRAINING COMPLETE!")
     print("="*80)
-    print("📊 Results saved in:")
+    print("Results saved in:")
     print("   - training_results/ (detailed CSV files)")
     print("   - saved_models/ (trained models + loading script)")
     print("   - model_comparison.png (training curves)")
@@ -105,7 +108,7 @@ if __name__ == "__main__":
     
     # Print final model comparison
     print("\n" + "="*60)
-    print("📋 FINAL MODEL PERFORMANCE SUMMARY")
+    print("FINAL MODEL PERFORMANCE SUMMARY")
     print("="*60)
     
     # Sort models by best validation accuracy
@@ -114,7 +117,7 @@ if __name__ == "__main__":
                           reverse=True)
     
     for i, (model_name, results) in enumerate(sorted_results, 1):
-        status = "🏆" if i == 1 else f"{i}."
+        status = "WINNER" if i == 1 else f"{i}."
         early_stop_info = " (Early Stopped)" if results.get('early_stopped', False) else ""
         print(f"{status} {model_name}: {results['best_val_acc']:.4f} accuracy "
               f"({results['epochs_trained']}/{trainer.epochs} epochs{early_stop_info})")

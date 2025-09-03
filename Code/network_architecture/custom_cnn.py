@@ -26,8 +26,8 @@ class Network(nn.Module):
         self.fc = nn.Sequential(
             nn.Linear(9 * self.flatten_size, 256),
             nn.ReLU(),
-            nn.Linear(256, num_classes),
-            nn.Softmax(dim=1)
+            nn.Linear(256, num_classes)
+            # Removed Softmax - CrossEntropyLoss expects raw logits
         )
     
     def _forward_cnn(self, x):

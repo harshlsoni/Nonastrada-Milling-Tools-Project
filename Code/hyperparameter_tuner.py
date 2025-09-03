@@ -85,7 +85,7 @@ class HyperparameterTuner:
         Returns:
             Dictionary with training results
         """
-        print(f"\n🔧 Training config: {config}")
+        print(f"\nTraining config: {config}")
         
         # Initialize model
         model = self.model_class(self.num_classes).to(self.device)
@@ -230,7 +230,7 @@ class HyperparameterTuner:
             import random
             combinations = random.sample(combinations, max_trials)
         
-        print(f"🎯 Starting hyperparameter tuning with {len(combinations)} configurations...")
+        print(f"Starting hyperparameter tuning with {len(combinations)} conconfigurations...")
         
         best_config = None
         best_score = 0
@@ -253,10 +253,10 @@ class HyperparameterTuner:
                 if result['best_val_acc'] > best_score:
                     best_score = result['best_val_acc']
                     best_config = config
-                    print(f"🏆 New best score: {best_score:.4f}")
+                    print(f" New best score: {best_score:.4f}")
                 
             except Exception as e:
-                print(f"❌ Error in trial {i+1}: {e}")
+                print(f" Error in trial {i+1}: {e}")
                 continue
         
         return best_config, best_score, self.results
@@ -285,6 +285,6 @@ class HyperparameterTuner:
         df = pd.DataFrame(flattened_results)
         df = df.sort_values('best_val_acc', ascending=False)
         df.to_csv(filename, index=False)
-        print(f"✅ Hyperparameter tuning results saved to {filename}")
+        print(f" Hyperparameter tuning results saved to {filename}")
         
         return df

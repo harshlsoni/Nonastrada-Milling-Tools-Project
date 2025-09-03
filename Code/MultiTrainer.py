@@ -168,10 +168,13 @@ class MultiTrainer:
     def train_all_parallel(self):
         """Train all models in parallel using threading"""
         print("Starting parallel training of all models...")
+        print("WARNING: Parallel training may cause GPU memory issues.")
+        print("   Consider using sequential training if you encounter CUDA out of memory errors.")
         start_time = time.time()
         
-        # Use ThreadPoolExecutor for parallel training
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        # Use ThreadPoolExecutor for parallel training with reduced workers for GPU safety
+        max_workers = min(2, len(self.models))  # Limit to 2 workers to prevent GPU memory issues
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(self.train_single_model, name): name 
                       for name in self.models.keys()}
             
@@ -179,8 +182,14 @@ class MultiTrainer:
                 model_name = futures[future]
                 try:
                     self.results[model_name] = future.result()
+                    # Clear GPU cache after each model
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
                 except Exception as e:
                     print(f"Error training {model_name}: {e}")
+                    # Clear GPU cache on error
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
         
         total_time = time.time() - start_time
         print(f"\nAll models trained in {total_time:.2f} seconds")
@@ -244,7 +253,7 @@ class MultiTrainer:
         # Find best model
         best_model = comparison_data[0]['Model']
         best_acc = comparison_data[0]['Best Val Acc']
-        print(f"🏆 WINNER: {best_model} with {best_acc} validation accuracy")
+        print(f"WINNER: {best_model} with {best_acc} validation accuracy")
         
         return comparison_data
     
@@ -324,7 +333,7 @@ class MultiTrainer:
             df_model = pd.DataFrame(epoch_data)
             csv_filename = f'training_results/{model_name}_detailed_results.csv'
             df_model.to_csv(csv_filename, index=False)
-            print(f"✅ Saved {model_name} detailed results to {csv_filename}")
+            print(f"Saved {model_name} detailed results to {csv_filename}")
         
         # Save combined results
         all_data = []
@@ -343,7 +352,7 @@ class MultiTrainer:
         df_combined = pd.DataFrame(all_data)
         combined_filename = 'training_results/all_models_detailed_results.csv'
         df_combined.to_csv(combined_filename, index=False)
-        print(f"✅ Saved combined detailed results to {combined_filename}")
+        print(f"Saved combined detailed results to {combined_filename}")
         
         # Save summary results
         summary_data = []
@@ -367,7 +376,7 @@ class MultiTrainer:
         df_summary = pd.DataFrame(summary_data)
         summary_filename = 'training_results/models_summary_results.csv'
         df_summary.to_csv(summary_filename, index=False)
-        print(f"✅ Saved summary results to {summary_filename}")
+        print(f"Saved summary results to {summary_filename}")
         
         return df_combined, df_summary
     
@@ -399,7 +408,7 @@ class MultiTrainer:
             # Save model
             model_filename = f'saved_models/{model_name}_{timestamp}.pth'
             torch.save(model_save_data, model_filename)
-            print(f"✅ Saved {model_name} to {model_filename}")
+            print(f"Saved {model_name} to {model_filename}")
             
             # Save model architecture as text file
             arch_filename = f'saved_models/{model_name}_{timestamp}_architecture.txt'
@@ -416,7 +425,7 @@ class MultiTrainer:
                     f.write(f"Final Validation Accuracy: {self.results[model_name]['final_val_acc']:.4f}\n")
                 f.write(f"\nModel Architecture:\n{str(model)}\n")
             
-            print(f"✅ Saved {model_name} architecture to {arch_filename}")
+            print(f"Saved {model_name} architecture to {arch_filename}")
         
         # Create a loading script
         loading_script = f'''# Model Loading Script - Generated on {timestamp}
@@ -464,9 +473,9 @@ class MultiTrainer:
         with open(script_filename, 'w') as f:
             f.write(loading_script)
         
-        print(f"✅ Created model loading script: {script_filename}")
-        print(f"\n📁 All models saved in 'saved_models/' directory")
-        print(f"📊 All training results saved in 'training_results/' directory")
+        print(f"Created model loading script: {script_filename}")
+        print(f"\nAll models saved in 'saved_models/' directory")
+        print(f"All training results saved in 'training_results/' directory")
     
     def get_model_summary(self):
         """Get parameter count and model size for each model"""
@@ -495,7 +504,7 @@ class MultiTrainer:
         self.models[model_name] = model_instance.to(self.device)
         self.optimizers[model_name] = optim.Adam(model_instance.parameters(), lr=learning_rate)
         self.criterions[model_name] = nn.CrossEntropyLoss()
-        print(f"✅ Added custom model: {model_name}")
+        print(f"Added custom model: {model_name}")
     
     def remove_model(self, model_name):
         """Remove a model from the trainer"""
@@ -505,9 +514,9 @@ class MultiTrainer:
             del self.criterions[model_name]
             if model_name in self.results:
                 del self.results[model_name]
-            print(f"✅ Removed model: {model_name}")
+            print(f"Removed model: {model_name}")
         else:
-            print(f"❌ Model {model_name} not found")
+            print(f"Model {model_name} not found")
     
     def get_best_model(self):
         """Get the best performing model based on validation accuracy"""
@@ -520,7 +529,7 @@ class MultiTrainer:
         best_model = self.models[best_model_name]
         best_results = self.results[best_model_name]
         
-        print(f"🏆 Best model: {best_model_name}")
+        print(f"Best model: {best_model_name}")
         print(f"   Best validation accuracy: {best_results['best_val_acc']:.4f}")
         print(f"   Training time: {best_results['total_time']:.2f}s")
         
@@ -539,13 +548,13 @@ class MultiTrainer:
             Best hyperparameter configuration and results
         """
         if not self.results:
-            print("❌ No results available. Train models first.")
+            print("No results available. Train models first.")
             return None
         
         # Get the best model
         _, best_model_name, _ = self.get_best_model()
         
-        print(f"\n🎯 Starting hyperparameter tuning for {best_model_name}...")
+        print(f"\nStarting hyperparameter tuning for {best_model_name}...")
         print("="*60)
         
         # Import hyperparameter tuner
@@ -582,7 +591,7 @@ class MultiTrainer:
         # Save results
         tuning_df = tuner.save_tuning_results(f'{best_model_name}_hyperparameter_tuning_results.csv')
         
-        print(f"\n🏆 HYPERPARAMETER TUNING COMPLETE!")
+        print(f"\nHYPERPARAMETER TUNING COMPLETE!")
         print("="*60)
         print(f"Best model: {best_model_name}")
         print(f"Best configuration: {best_config}")

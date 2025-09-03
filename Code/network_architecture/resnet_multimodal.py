@@ -8,8 +8,9 @@ class ResNetMultiModal(nn.Module):
         super(ResNetMultiModal, self).__init__()
         
         # Load pretrained ResNet18 and remove final classification layer
-        self.backbone = models.resnet18(pretrained=pretrained)
-        self.feature_dim = self.backbone.fc.in_features
+        weights = models.ResNet18_Weights.IMAGENET1K_V1 if pretrained else None
+        self.backbone = models.resnet18(weights=weights)
+        self.feature_dim = self.backbone.fc.in_features  # ResNet18: 512
         self.backbone.fc = nn.Identity()  # Remove final FC layer
         
         # Freeze all layers except the last TWO CNN blocks (layer3 and layer4)

@@ -19,10 +19,32 @@ class MultiModalMillingDataset(Dataset):
             transform (callable, optional): Optional transform to be applied on images
         """
         self.root_dir = root_dir
-        self.labels = pd.read_csv(labels_csv)
+        
+        # Add error handling for CSV files
+        try:
+            self.labels = pd.read_csv(labels_csv)
+            if len(self.labels.columns) < 2:
+                raise ValueError(f"Labels CSV must have at least 2 columns, got {len(self.labels.columns)}")
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Labels CSV file not found: {labels_csv}")
+        except Exception as e:
+            raise ValueError(f"Error reading labels CSV: {e}")
+        
+        try:
+            self.reg_labels = pd.read_csv(labels_reg_csv)
+            if 'flank_wear' not in self.reg_labels.columns:
+                raise ValueError("Regression CSV must contain 'flank_wear' column")
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Regression labels CSV file not found: {labels_reg_csv}")
+        except Exception as e:
+            raise ValueError(f"Error reading regression CSV: {e}")
+        
+        # Verify both CSVs have same length
+        if len(self.labels) != len(self.reg_labels):
+            raise ValueError(f"Labels CSV ({len(self.labels)} rows) and regression CSV ({len(self.reg_labels)} rows) must have same length")
+        
         self.label_encoder = LabelEncoder()
         self.labels["encoded"] = self.label_encoder.fit_transform(self.labels.iloc[:, 1])
-        self.reg_labels = pd.read_csv(labels_reg_csv)
         
         self.transform = transform if transform else transforms.Compose([
             transforms.Resize((224, 224)),   # make all images 224x224
