@@ -455,11 +455,11 @@ def main():
         'data_dir': 'Files',
         'batch_size': 16,
         'train_split': 0.8,
-        'baseline_epochs': 30,
+        'baseline_epochs': 25,
         'tuning_max_trials': 15,
         'tuning_max_epochs': 25,
-        'tuning_patience': 8,
-        'final_max_epochs': 50
+        'tuning_patience': 3,
+        'final_max_epochs': 20
     }
     
     print("Configuration:")
