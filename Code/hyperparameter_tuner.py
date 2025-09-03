@@ -244,7 +244,7 @@ class HyperparameterTuner:
                 # Take first option for simplicity, could be randomized
                 config['scheduler_params'] = {k: v[0] for k, v in scheduler_options.items()}
             
-            print(f"\n📊 Trial {i+1}/{len(combinations)}")
+            print(f"\nTrial {i+1}/{len(combinations)}")
             
             try:
                 result = self.train_single_config(config, max_epochs, patience)
@@ -253,10 +253,10 @@ class HyperparameterTuner:
                 if result['best_val_acc'] > best_score:
                     best_score = result['best_val_acc']
                     best_config = config
-                    print(f" New best score: {best_score:.4f}")
+                    print(f"New best score: {best_score:.4f}")
                 
             except Exception as e:
-                print(f" Error in trial {i+1}: {e}")
+                print(f"Error in trial {i+1}: {e}")
                 continue
         
         return best_config, best_score, self.results
