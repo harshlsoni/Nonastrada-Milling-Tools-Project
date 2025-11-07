@@ -1,0 +1,11 @@
+# Ignore all test data except the scripts and README
+*
+!.gitignore
+!README.md
+!create_sample_data.py
+!test_custom_data.py
+
+# But allow sample directories to be tracked if desired
+# Uncomment the following lines to track specific samples:
+# !sample_test_1_low_freq/
+# !sample_test_1_low_freq/**

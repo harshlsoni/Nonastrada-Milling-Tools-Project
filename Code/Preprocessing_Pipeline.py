@@ -89,14 +89,14 @@ def generate_timefrequency_representation(
 		contain 'coef' and 'freqs' (or None if pywt missing).
 	"""
 
-	print(f"🔬 Starting TFR generation for {len(x)}, {len(y)}, {len(z)} samples")
+	print(f"[INFO] Starting TFR generation for {len(x)}, {len(y)}, {len(z)} samples")
 	
 	# normalize and validate
 	x = _ensure_1d_array(x)
 	y = _ensure_1d_array(y)
 	z = _ensure_1d_array(z)
 	
-	print(f"📊 Normalized arrays: X={x.shape}, Y={y.shape}, Z={z.shape}")
+	print(f"[INFO] Normalized arrays: X={x.shape}, Y={y.shape}, Z={z.shape}")
 
 	signals = {'x': x, 'y': y, 'z': z}
 	spec_out = {}
@@ -104,30 +104,30 @@ def generate_timefrequency_representation(
 
 	if outdir and plot:
 		os.makedirs(outdir, exist_ok=True)
-		print(f"📁 Output directory ready: {outdir}")
+		print(f"[INFO] Output directory ready: {outdir}")
 
 	for name, sig in signals.items():
-		print(f"🔄 Processing {name}-axis signal ({sig.size} samples)...")
+		print(f"[INFO] Processing {name}-axis signal ({sig.size} samples)...")
 		
 		if sig.size == 0:
 			raise ValueError(f"Signal '{name}' is empty")
 
 		# Spectrogram
-		print(f"   📈 Computing spectrogram...")
+		print(f"[INFO] Computing spectrogram for {name}-axis...")
 		f, t, Sxx = signal.spectrogram(sig, fs=fs, nperseg=nperseg, noverlap=noverlap)
 		# convert to dB, add small epsilon to avoid log(0)
 		Sxx_db = 10.0 * np.log10(Sxx + 1e-12)
 		spec_out[name] = {'f': f, 't': t, 'Sxx_db': Sxx_db}
-		print(f"   ✅ Spectrogram done: {Sxx_db.shape}")
+		print(f"[SUCCESS] Spectrogram completed: {Sxx_db.shape}")
 
 		# Scalogram (CWT) if pywt available
 		if pywt is not None:
-			print(f"   🌊 Computing scalogram...")
+			print(f"[INFO] Computing scalogram for {name}-axis...")
 			if widths is None:
 				# Use fewer scales to speed up computation
 				widths = np.arange(1, 64)  # Reduced from 128 to 64
 			
-			print(f"      Using {len(widths)} scales for CWT...")
+			print(f"[INFO] Using {len(widths)} scales for CWT...")
 			
 			# For very large signals, downsample for scalogram computation
 			sig_for_cwt = sig
@@ -136,7 +136,7 @@ def generate_timefrequency_representation(
 			if sig.size > 20000:  # If signal is larger than 20k samples
 				downsample_factor = max(1, sig.size // 20000)  # Downsample to ~20k samples
 				sig_for_cwt = sig[::downsample_factor]
-				print(f"      Downsampling by factor {downsample_factor} for CWT: {sig.size} → {sig_for_cwt.size}")
+				print(f"[INFO] Downsampling by factor {downsample_factor} for CWT: {sig.size} -> {sig_for_cwt.size}")
 			
 			# cwt returns (coef, freqs) with sampling_period parameter available in newer pywt
 			try:
@@ -150,27 +150,27 @@ def generate_timefrequency_representation(
 					coef, freqs = pywt.cwt(sig_for_cwt, widths, wavelet)
 				
 				elapsed = time.time() - start_time
-				print(f"      CWT computation took {elapsed:.2f}s")
+				print(f"[INFO] CWT computation took {elapsed:.2f}s")
 				
 				scalo_out[name] = {'coef': coef, 'freqs': freqs, 'downsample_factor': downsample_factor}
-				print(f"   ✅ Scalogram done: {coef.shape}")
+				print(f"[SUCCESS] Scalogram completed: {coef.shape}")
 				
 			except Exception as cwt_e:
-				print(f"   ❌ CWT computation failed: {cwt_e}")
+				print(f"[ERROR] CWT computation failed: {cwt_e}")
 				scalo_out[name] = None
 		else:
-			print(f"   ⚠️  PyWavelets not available, skipping scalogram")
+			print(f"[WARNING] PyWavelets not available, skipping scalogram")
 			scalo_out[name] = None
 
 		# Optional plotting
 		if plot:
-			print(f"   🎨 Creating plots...")
+			print(f"[INFO] Creating plots for {name}-axis...")
 			# Set matplotlib to use non-GUI backend for web applications
 			import matplotlib
 			matplotlib.use('Agg')  # Use non-interactive backend
 			
 			# spectrogram figure
-			print(f"      📊 Plotting spectrogram...")
+			print(f"[INFO] Plotting spectrogram...")
 			fig, ax = plt.subplots(figsize=(8, 4))
 			im = ax.pcolormesh(t, f, Sxx_db, shading='gouraud')
 			ax.set_ylabel('Frequency [Hz]')
@@ -181,12 +181,12 @@ def generate_timefrequency_representation(
 			if outdir:
 				spec_path = os.path.join(outdir, f"{prefix}{name}_spectrogram.png")
 				plt.savefig(spec_path, dpi=150, bbox_inches='tight')
-				print(f"      ✅ Saved: {spec_path}")
+				print(f"[SUCCESS] Saved spectrogram: {spec_path}")
 			plt.close(fig)
 
 			# scalogram
 			if scalo_out[name] is not None:
-				print(f"      🌊 Plotting scalogram...")
+				print(f"[INFO] Plotting scalogram...")
 				try:
 					coef = scalo_out[name]['coef']
 					freqs = scalo_out[name]['freqs']
@@ -195,19 +195,19 @@ def generate_timefrequency_representation(
 					# Create time axis for the scalogram (accounting for downsampling)
 					t_s = np.arange(coef.shape[1]) * downsample_factor / fs
 					
-					print(f"         Scalogram data: coef={coef.shape}, freqs={len(freqs)}, downsample={downsample_factor}")
+					print(f"[INFO] Scalogram data: coef={coef.shape}, freqs={len(freqs)}, downsample={downsample_factor}")
 					
 					# Skip plotting if data is still too large (shouldn't happen with downsampling)
 					if coef.size > 5000000:  # 5M elements
-						print(f"         Scalogram too large ({coef.size} elements), skipping plot")
+						print(f"[WARNING] Scalogram too large ({coef.size} elements), skipping plot")
 						continue
 					
-					print(f"         Creating scalogram figure...")
+					print(f"[INFO] Creating scalogram figure...")
 					fig, ax = plt.subplots(figsize=(8, 4))
 					# robust plotting: pcolormesh requires matching 2D shapes; fall back to imshow
 					mag = np.abs(coef)
 					mag = np.asarray(mag)
-					print(f"         Magnitude array: {mag.shape}")
+					print(f"[INFO] Magnitude array: {mag.shape}")
 					
 					# Ensure time axis length matches mag's time dimension
 					if mag.ndim == 2:
@@ -218,14 +218,14 @@ def generate_timefrequency_representation(
 						try:
 							T, F = np.meshgrid(t_s, freqs)
 							mappable = ax.pcolormesh(T, F, mag, shading='gouraud')
-							print(f"         Used pcolormesh")
+							print(f"[INFO] Used pcolormesh for plotting")
 						except Exception as e:
-							print(f"         Pcolormesh failed: {e}, using imshow")
+							print(f"[WARNING] Pcolormesh failed: {e}, using imshow")
 							# fallback: imshow with extent
 							mappable = ax.imshow(mag, aspect='auto', origin='lower',
 												extent=(t_s[0], t_s[-1], freqs[0], freqs[-1]))
 					else:
-						print(f"         Non-2D coef, using imshow")
+						print(f"[INFO] Non-2D coef, using imshow")
 						# non-2D coef, try to plot as image after forcing 2D
 						mag2 = np.atleast_2d(mag)
 						cols = mag2.shape[1]
@@ -235,7 +235,7 @@ def generate_timefrequency_representation(
 												extent=(t_s[0], t_s[-1], freqs[0] if hasattr(freqs, '__len__') and len(freqs)>0 else 0,
 												freqs[-1] if hasattr(freqs, '__len__') and len(freqs)>0 else 1))
 					
-					print(f"         Setting labels and colorbar...")
+					print(f"[INFO] Setting labels and colorbar...")
 					ax.set_ylabel('Frequency [Hz]')
 					ax.set_xlabel('Time [sec]')
 					ax.set_title(f'Scalogram (CWT) - {name} axis')
@@ -243,53 +243,53 @@ def generate_timefrequency_representation(
 					# Add colorbar with error handling
 					try:
 						plt.colorbar(mappable, ax=ax, label='Magnitude')
-						print(f"         Colorbar added")
+						print(f"[INFO] Colorbar added")
 					except Exception as cb_e:
-						print(f"         Colorbar failed: {cb_e}")
+						print(f"[WARNING] Colorbar failed: {cb_e}")
 					
 					# Set log scale with error handling
 					try:
 						ax.set_yscale('log')
-						print(f"         Log scale applied")
+						print(f"[INFO] Log scale applied")
 					except Exception as log_e:
-						print(f"         Log scale failed: {log_e}, using linear scale")
+						print(f"[WARNING] Log scale failed: {log_e}, using linear scale")
 					
 					# Tight layout with error handling
 					try:
 						plt.tight_layout()
-						print(f"         Layout adjusted")
+						print(f"[INFO] Layout adjusted")
 					except Exception as layout_e:
-						print(f"         Layout adjustment failed: {layout_e}")
+						print(f"[WARNING] Layout adjustment failed: {layout_e}")
 					
 					if outdir:
 						scalo_path = os.path.join(outdir, f"{prefix}{name}_scalogram.png")
-						print(f"         Saving scalogram to: {scalo_path}")
+						print(f"[INFO] Saving scalogram to: {scalo_path}")
 						try:
 							plt.savefig(scalo_path, dpi=150, bbox_inches='tight')
-							print(f"      ✅ Saved: {scalo_path}")
+							print(f"[SUCCESS] Saved scalogram: {scalo_path}")
 							# Verify file was created
 							if os.path.exists(scalo_path):
 								file_size = os.path.getsize(scalo_path)
-								print(f"         File size: {file_size:,} bytes")
+								print(f"[INFO] File size: {file_size:,} bytes")
 							else:
-								print(f"         ❌ File not created!")
+								print(f"[ERROR] File not created")
 						except Exception as save_e:
-							print(f"         ❌ Save failed: {save_e}")
+							print(f"[ERROR] Save failed: {save_e}")
 					
 					try:
 						plt.close(fig)
-						print(f"         Figure closed")
+						print(f"[INFO] Figure closed")
 					except Exception as close_e:
-						print(f"         Close failed: {close_e}")
+						print(f"[WARNING] Close failed: {close_e}")
 					
 				except Exception as e:
-					print(f"      ❌ Scalogram plotting failed: {e}")
+					print(f"[ERROR] Scalogram plotting failed: {e}")
 					import traceback
 					traceback.print_exc()
 			else:
-				print(f"      ⚠️  No scalogram data to plot")
+				print(f"[WARNING] No scalogram data to plot")
 
-	print(f"✅ TFR generation completed for all axes")
+	print(f"[SUCCESS] TFR generation completed for all axes")
 	return {'spectrogram': spec_out, 'scalogram': scalo_out}
 
 

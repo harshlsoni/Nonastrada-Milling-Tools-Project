@@ -32,6 +32,9 @@ app = Flask(__name__)
 UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', os.path.join('/app', 'uploads'))
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+# Global progress tracker
+progress_tracker = {}
+
 HTML_FORM = '''
 <!doctype html>
 <html lang="en">
@@ -186,6 +189,77 @@ HTML_FORM = '''
     display: block;
   }
   
+  /* Loading Progress Bar */
+  .progress-container {
+    margin: 20px 0;
+    display: none;
+  }
+  
+  .progress-container.active {
+    display: block;
+  }
+  
+  .progress-bar-wrapper {
+    width: 100%;
+    height: 8px;
+    background: #e0e0e0;
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 10px 0;
+  }
+  
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #2c3e50, #3498db);
+    width: 0%;
+    transition: width 0.3s ease;
+    border-radius: 4px;
+  }
+  
+  .progress-steps {
+    margin-top: 15px;
+  }
+  
+  .progress-step {
+    padding: 10px 15px;
+    margin: 8px 0;
+    border-left: 4px solid #e0e0e0;
+    background: #f8f9fa;
+    border-radius: 4px;
+    font-size: 0.95rem;
+    color: #666;
+  }
+  
+  .progress-step.active {
+    border-left-color: #ffc107;
+    background: #fff3cd;
+    color: #856404;
+    font-weight: 600;
+  }
+  
+  .progress-step.completed {
+    border-left-color: #28a745;
+    background: #d4edda;
+    color: #155724;
+  }
+  
+  .progress-step.error {
+    border-left-color: #dc3545;
+    background: #f8d7da;
+    color: #721c24;
+  }
+  
+  .step-label {
+    font-weight: 600;
+    margin-right: 8px;
+  }
+  
+  .step-detail {
+    font-size: 0.9rem;
+    color: #666;
+    margin-top: 4px;
+  }
+  
   .results-container { 
     margin-top: 30px;
   }
@@ -297,6 +371,15 @@ HTML_FORM = '''
     <button class="btn" onclick="streamDemo()">Stream Data Only</button>
   </div>
   <div id="status"></div>
+  
+  <!-- Progress Indicator -->
+  <div id="progress" class="progress-container">
+    <div class="progress-bar-wrapper">
+      <div id="progressBar" class="progress-bar"></div>
+    </div>
+    <div class="progress-steps" id="progressSteps"></div>
+  </div>
+  
   <div id="results"></div>
 </div>
 
@@ -346,6 +429,61 @@ HTML_FORM = '''
 </html>
 
 <script>
+// Progress tracking
+const PIPELINE_STEPS = [
+  { id: 'init', label: 'Initialization', detail: 'Loading data and preparing pipeline' },
+  { id: 'extract', label: 'Data Extraction', detail: 'Extracting force signals from MAT file' },
+  { id: 'spectrogram', label: 'Spectrogram Analysis', detail: 'Computing frequency-time representations' },
+  { id: 'scalogram', label: 'Scalogram Analysis', detail: 'Computing wavelet transformations' },
+  { id: 'images', label: 'Image Processing', detail: 'Processing work, tool, and chip images' },
+  { id: 'model', label: 'Model Inference', detail: 'Running neural network prediction' },
+  { id: 'complete', label: 'Complete', detail: 'Processing finished successfully' }
+];
+
+function initProgress() {
+  const progressContainer = document.getElementById('progress');
+  const progressSteps = document.getElementById('progressSteps');
+  
+  progressContainer.classList.add('active');
+  progressSteps.innerHTML = '';
+  
+  PIPELINE_STEPS.forEach(step => {
+    const stepDiv = document.createElement('div');
+    stepDiv.className = 'progress-step';
+    stepDiv.id = 'step-' + step.id;
+    stepDiv.innerHTML = '<span class="step-label">' + step.label + '</span><div class="step-detail">' + step.detail + '</div>';
+    progressSteps.appendChild(stepDiv);
+  });
+}
+
+function updateProgress(stepId, status = 'active') {
+  const stepIndex = PIPELINE_STEPS.findIndex(s => s.id === stepId);
+  if (stepIndex === -1) return;
+  
+  const progressBar = document.getElementById('progressBar');
+  const percentage = ((stepIndex + 1) / PIPELINE_STEPS.length) * 100;
+  progressBar.style.width = percentage + '%';
+  
+  // Update step statuses
+  PIPELINE_STEPS.forEach((step, idx) => {
+    const stepEl = document.getElementById('step-' + step.id);
+    if (!stepEl) return;
+    
+    if (idx < stepIndex) {
+      stepEl.className = 'progress-step completed';
+    } else if (idx === stepIndex) {
+      stepEl.className = 'progress-step ' + status;
+    } else {
+      stepEl.className = 'progress-step';
+    }
+  });
+}
+
+function hideProgress() {
+  const progressContainer = document.getElementById('progress');
+  progressContainer.classList.remove('active');
+}
+
 function updateStatus(message, type = 'processing') {
   const status = document.getElementById('status');
   status.innerHTML = message;
@@ -357,18 +495,38 @@ function updateResults(data) {
   let html = '<div class="results-container">';
   
   // Show basic info
-  html += '<h3>📊 Processing Results</h3>';
+  html += '<h3>Processing Results</h3>';
   html += '<div class="result-info">';
   html += '<p><strong>Status:</strong> ' + data.status + '</p>';
   html += '<p><strong>Message:</strong> ' + data.message + '</p>';
   
+  // Show error/warning for missing images
+  if (data.error_type === 'missing_images' && data.missing_images) {
+    html += '<div style="background: #fff3cd; border: 2px solid #ffc107; padding: 15px; margin: 15px 0; border-radius: 6px;">';
+    html += '<p style="color: #856404; font-weight: 600; margin: 0 0 10px 0;">Warning: Missing Real Images</p>';
+    html += '<p style="color: #856404; margin: 5px 0;">The following images were not found:</p>';
+    html += '<ul style="color: #856404; margin: 5px 0;">';
+    data.missing_images.forEach(img => {
+      html += '<li>' + img.charAt(0).toUpperCase() + img.slice(1) + ' image</li>';
+    });
+    html += '</ul>';
+    if (data.image_id) {
+      html += '<p style="color: #856404; margin: 5px 0;"><strong>Image ID:</strong> ' + data.image_id + '</p>';
+    }
+    html += '<p style="color: #856404; margin: 10px 0 0 0; font-style: italic;">Note: Model predictions require real manufacturing images. Only signal analysis was performed.</p>';
+    html += '</div>';
+  }
+  
   if (data.metadata) {
     html += '<p><strong>Datapoint:</strong> ' + data.metadata.datapoint_index + '/' + data.metadata.total_datapoints + '</p>';
     html += '<p><strong>Samples:</strong> ' + data.metadata.sample_count.toLocaleString() + ' per axis</p>';
+    if (data.metadata.image_id) {
+      html += '<p><strong>Image ID:</strong> ' + data.metadata.image_id + '</p>';
+    }
   }
   
   if (data.outputs || data.prediction_interpretation) {
-    html += '<h4>🤖 Model Predictions</h4>';
+    html += '<h4>Model Predictions</h4>';
     
     if (data.prediction_interpretation) {
       const pred = data.prediction_interpretation;
@@ -411,11 +569,11 @@ function updateResults(data) {
   
   // Show generated images organized by type
   if (data.image_urls && data.image_urls.length > 0) {
-    html += '<h3>🖼️ Generated Visualizations</h3>';
+    html += '<h3>Generated Visualizations</h3>';
     
     // Show spectrograms
     if (data.spectrograms && data.spectrograms.length > 0) {
-      html += '<h4>📊 Spectrograms (Frequency-Time Analysis)</h4>';
+      html += '<h4>Spectrograms (Frequency-Time Analysis)</h4>';
       html += '<div class="image-gallery">';
       data.spectrograms.forEach(url => {
         const filename = url.split('/').pop();
@@ -430,7 +588,7 @@ function updateResults(data) {
     
     // Show scalograms
     if (data.scalograms && data.scalograms.length > 0) {
-      html += '<h4>🌊 Scalograms (Wavelet Analysis)</h4>';
+      html += '<h4>Scalograms (Wavelet Analysis)</h4>';
       html += '<div class="image-gallery">';
       data.scalograms.forEach(url => {
         const filename = url.split('/').pop();
@@ -445,7 +603,7 @@ function updateResults(data) {
     
     // Show other images (work, tool, chip)
     if (data.other_images && data.other_images.length > 0) {
-      html += '<h4>📷 Manufacturing Images</h4>';
+      html += '<h4>Manufacturing Images</h4>';
       html += '<div class="image-gallery">';
       data.other_images.forEach(url => {
         const filename = url.split('/').pop();
@@ -476,7 +634,7 @@ function updateResults(data) {
   }
   
   // Show raw data for debugging
-  html += '<details style="margin-top: 20px;"><summary>🔍 Raw Response Data</summary>';
+  html += '<details style="margin-top: 20px;"><summary>Raw Response Data</summary>';
   html += '<pre style="background: #f5f5f5; padding: 10px; overflow: auto;">' + JSON.stringify(data, null, 2) + '</pre>';
   html += '</details>';
   
@@ -485,50 +643,122 @@ function updateResults(data) {
 }
 
 function runRealTimeDemo() {
-  updateStatus('🔄 Extracting real milling data and streaming through Kafka...', 'processing');
+  initProgress();
+  updateProgress('init', 'active');
+  updateStatus('Starting pipeline processing...', 'processing');
   
+  let sessionId = null;
+  let progressInterval = null;
+  
+  // Function to poll backend progress
+  function pollProgress() {
+    if (!sessionId) return;
+    
+    fetch('/progress/' + sessionId)
+      .then(response => response.json())
+      .then(progressData => {
+        if (progressData.step && progressData.status) {
+          updateProgress(progressData.step, progressData.status);
+        }
+      })
+      .catch(error => {
+        console.log('Progress poll error:', error);
+      });
+  }
+  
+  // Start the demo
   fetch('/demo')
-    .then(response => response.json())
-    .then(data => {
-      if (data.status.includes('success')) {
-        updateStatus('✅ Real-time demo completed successfully!', 'success');
-      } else if (data.status.includes('partial')) {
-        updateStatus('⏳ Data streamed, waiting for processing...', 'processing');
-        // Poll for results
-        pollForResults(data.sample_id);
-      } else {
-        updateStatus('✅ Demo completed (direct processing mode)', 'success');
+    .then(response => {
+      if (!response.ok) {
+        return response.json().then(data => {
+          throw new Error(data.message || 'Request failed');
+        });
       }
-      updateResults(data);
+      return response.json();
+    })
+    .then(data => {
+      // Get session ID and start polling
+      sessionId = data.session_id;
+      if (sessionId) {
+        progressInterval = setInterval(pollProgress, 200); // Poll every 200ms
+      }
+      
+      // Wait for completion
+      setTimeout(() => {
+        if (progressInterval) {
+          clearInterval(progressInterval);
+        }
+        
+        // Check if we have missing images
+        if (data.error_type === 'missing_images' || data.status === 'tfr_only') {
+          updateProgress('complete', 'error');
+          updateStatus('Analysis completed with warnings - see details below', 'error');
+          updateResults(data);
+          setTimeout(hideProgress, 3000);
+        } else if (data.status.includes('success')) {
+          updateProgress('complete', 'completed');
+          updateStatus('Real-time demo completed successfully', 'success');
+          updateResults(data);
+          setTimeout(hideProgress, 2000);
+        } else if (data.status.includes('partial')) {
+          updateStatus('Data streamed, waiting for processing...', 'processing');
+          updateResults(data);
+          pollForResults(data.sample_id);
+        } else {
+          updateProgress('complete', 'completed');
+          updateStatus('Demo completed successfully', 'success');
+          updateResults(data);
+          setTimeout(hideProgress, 2000);
+        }
+      }, 500);
     })
     .catch(error => {
-      updateStatus('❌ Demo failed: ' + error.message, 'error');
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
+      updateProgress('complete', 'error');
+      updateStatus('Demo failed: ' + error.message, 'error');
+      setTimeout(hideProgress, 2000);
     });
 }
 
 function streamDemo() {
-  updateStatus('🌊 Starting data stream...', 'processing');
+  initProgress();
+  updateProgress('init', 'active');
+  updateStatus('Starting data stream...', 'processing');
+  
+  setTimeout(() => updateProgress('extract', 'active'), 300);
   
   fetch('/demo/stream')
-    .then(response => response.json())
+    .then(response => {
+      updateProgress('spectrogram', 'active');
+      return response.json();
+    })
     .then(data => {
       if (data.status === 'streaming_started') {
-        updateStatus('📡 Data streaming started! Monitoring for results...', 'processing');
+        updateProgress('scalogram', 'active');
+        updateStatus('Data streaming started. Monitoring for results...', 'processing');
         updateResults(data);
         pollForResults(data.sample_id);
       } else {
-        updateStatus('❌ Failed to start streaming', 'error');
+        updateProgress('complete', 'error');
+        updateStatus('Failed to start streaming', 'error');
         updateResults(data);
+        setTimeout(hideProgress, 2000);
       }
     })
     .catch(error => {
-      updateStatus('❌ Streaming failed: ' + error.message, 'error');
+      updateProgress('complete', 'error');
+      updateStatus('Streaming failed: ' + error.message, 'error');
+      setTimeout(hideProgress, 2000);
     });
 }
 
 function pollForResults(sampleId, attempts = 0) {
   if (attempts > 10) {
-    updateStatus('⏰ Timeout waiting for results', 'error');
+    updateProgress('complete', 'error');
+    updateStatus('Timeout waiting for results', 'error');
+    setTimeout(hideProgress, 2000);
     return;
   }
   
@@ -537,17 +767,23 @@ function pollForResults(sampleId, attempts = 0) {
       .then(response => response.json())
       .then(data => {
         if (data.status === 'completed') {
-          updateStatus('🎉 Processing completed!', 'success');
+          updateProgress('complete', 'completed');
+          updateStatus('Processing completed successfully', 'success');
           updateResults(data.result);
+          hideProgress();
         } else if (data.status === 'processing') {
-          updateStatus('⚙️ Still processing... (attempt ' + (attempts + 1) + ')', 'processing');
+          updateStatus('Still processing... (attempt ' + (attempts + 1) + ')', 'processing');
           pollForResults(sampleId, attempts + 1);
         } else {
-          updateStatus('❌ Processing error: ' + data.message, 'error');
+          updateProgress('complete', 'error');
+          updateStatus('Processing error: ' + data.message, 'error');
+          setTimeout(hideProgress, 2000);
         }
       })
       .catch(error => {
-        updateStatus('❌ Status check failed: ' + error.message, 'error');
+        updateProgress('complete', 'error');
+        updateStatus('Status check failed: ' + error.message, 'error');
+        setTimeout(hideProgress, 2000);
       });
   }, 2000);
 }
@@ -973,6 +1209,10 @@ def predict():
 @app.route('/demo')
 def demo():
     """Run real-time demo: extract real data and stream through Kafka pipeline."""
+    # Generate unique session ID for progress tracking
+    session_id = str(uuid.uuid4())
+    progress_tracker[session_id] = {'step': 'init', 'status': 'active'}
+    
     try:
         # Import the sample data function
         from sample_raw_force_data import get_random_force_streams
@@ -981,18 +1221,42 @@ def demo():
         print("Extracting random force data and real images from MAT file...")
         from sample_raw_force_data import get_random_force_streams_with_images
         
+        progress_tracker[session_id] = {'step': 'extract', 'status': 'active'}
         x, y, z, work, tool, chip, metadata = get_random_force_streams_with_images()
         
-        # If real images not available, use demo images as fallback
+        # Check if real images are available
+        has_real_images = metadata.get('has_real_images', False)
+        missing_images = []
+        
         if work is None:
-            work = make_demo_image(seed=metadata['datapoint_index'], size=(224, 224))
-            print("Using demo work image (real image not found)")
+            missing_images.append('work')
+            print("[WARNING] Real work image not found")
         if tool is None:
-            tool = make_demo_image(seed=metadata['datapoint_index']+1, size=(224, 224))
-            print("Using demo tool image (real image not found)")
+            missing_images.append('tool')
+            print("[WARNING] Real tool image not found")
         if chip is None:
-            chip = make_demo_image(seed=metadata['datapoint_index']+2, size=(224, 224))
-            print("Using demo chip image (real image not found)")
+            missing_images.append('chip')
+            print("[WARNING] Real chip image not found")
+        
+        # If any images are missing, we cannot make valid predictions
+        if missing_images:
+            print(f"[ERROR] Cannot proceed with prediction - missing real images: {', '.join(missing_images)}")
+            print(f"[INFO] Image ID: {metadata.get('image_id', 'unknown')}")
+            print(f"[INFO] Datapoint index: {metadata['datapoint_index']}")
+            
+            progress_tracker[session_id] = {'step': 'complete', 'status': 'error'}
+            
+            # Return error response indicating missing images
+            return jsonify({
+                'status': 'error',
+                'error_type': 'missing_images',
+                'message': f'Real images not found for datapoint {metadata["datapoint_index"]}',
+                'missing_images': missing_images,
+                'image_id': metadata.get('image_id'),
+                'metadata': metadata,
+                'session_id': session_id,
+                'note': 'Model requires real manufacturing images for accurate predictions. Synthetic images cannot be used.'
+            }), 400
         
         # Try to stream through Kafka if available
         bootstrap = 'localhost:9092'
@@ -1033,24 +1297,71 @@ def demo():
         except Exception as kafka_error:
             print(f"Kafka streaming failed: {kafka_error}")
             # Fallback to direct processing
-            return demo_fallback_processing(x, y, z, work, tool, chip, metadata)
+            return demo_fallback_processing(x, y, z, work, tool, chip, metadata, session_id)
             
     except Exception as e:
-        return jsonify({'status': 'error', 'message': f'Demo failed: {str(e)}'}), 500
+        if session_id in progress_tracker:
+            progress_tracker[session_id] = {'step': 'complete', 'status': 'error'}
+        return jsonify({'status': 'error', 'message': f'Demo failed: {str(e)}', 'session_id': session_id}), 500
 
-def demo_fallback_processing(x, y, z, work, tool, chip, metadata):
+def demo_fallback_processing(x, y, z, work, tool, chip, metadata, session_id):
     """Fallback processing when Kafka is not available."""
     # Use UPLOAD_FOLDER instead of temp directory so images are accessible
     demo_dir = os.path.join(UPLOAD_FOLDER, f"demo_{metadata['datapoint_index']}")
     os.makedirs(demo_dir, exist_ok=True)
     
     try:
-        print("🔄 Kafka not available, running direct processing...")
-        print(f"📁 Demo directory: {demo_dir}")
-        print(f"📊 Processing {len(x):,} samples per axis")
+        print("[INFO] Kafka not available, running direct processing...")
+        print(f"[INFO] Demo directory: {demo_dir}")
+        print(f"[INFO] Processing {len(x):,} samples per axis")
+        
+        progress_tracker[session_id] = {'step': 'images', 'status': 'active'}
+        
+        # Validate that we have real images
+        has_real_images = metadata.get('has_real_images', False)
+        if not has_real_images or work is None or tool is None or chip is None:
+            missing = []
+            if work is None: missing.append('work')
+            if tool is None: missing.append('tool')
+            if chip is None: missing.append('chip')
+            
+            print(f"[ERROR] Missing real images: {', '.join(missing)}")
+            print("[INFO] Generating time-frequency representations only (no prediction)")
+            
+            progress_tracker[session_id] = {'step': 'spectrogram', 'status': 'active'}
+            
+            # Generate TFR visualizations only
+            tfr = generate_timefrequency_representation(x, y, z, fs=10000, plot=True, outdir=demo_dir, prefix='real_data_')
+            
+            progress_tracker[session_id] = {'step': 'complete', 'status': 'error'}
+            
+            files = [f for f in os.listdir(demo_dir) if f.endswith('.png')]
+            image_urls = [f"/images/demo_{metadata['datapoint_index']}/{f}" for f in files]
+            
+            spectrograms = [url for url in image_urls if 'spectrogram' in url]
+            scalograms = [url for url in image_urls if 'scalogram' in url]
+            
+            return jsonify({
+                'status': 'tfr_only',
+                'error_type': 'missing_images',
+                'message': f'Time-frequency analysis completed, but prediction skipped due to missing images: {", ".join(missing)}',
+                'missing_images': missing,
+                'image_id': metadata.get('image_id'),
+                'metadata': metadata,
+                'image_urls': image_urls,
+                'spectrograms': spectrograms,
+                'scalograms': scalograms,
+                'kafka_streaming': False,
+                'session_id': session_id,
+                'note': 'Model requires real manufacturing images for predictions. Only signal analysis was performed.'
+            })
+        
+        print("[INFO] All real images available, proceeding with full analysis...")
+        
+        progress_tracker[session_id] = {'step': 'images', 'status': 'active'}
         
         # Save images for processing and display
-        print("💾 Saving images...")
+        print("[INFO] Saving images...")
         work_p = os.path.join(demo_dir, 'work.png')
         tool_p = os.path.join(demo_dir, 'tool.png')
         chip_p = os.path.join(demo_dir, 'chip.png')
@@ -1061,70 +1372,76 @@ def demo_fallback_processing(x, y, z, work, tool, chip, metadata):
         chip_img = np.clip(chip, 0, 255).astype(np.uint8)
         
         Image.fromarray(work_img).save(work_p)
-        print(f"✅ Saved work image: {work_img.shape}")
+        print(f"[SUCCESS] Saved work image: {work_img.shape}")
         Image.fromarray(tool_img).save(tool_p)
-        print(f"✅ Saved tool image: {tool_img.shape}")
+        print(f"[SUCCESS] Saved tool image: {tool_img.shape}")
         Image.fromarray(chip_img).save(chip_p)
-        print(f"✅ Saved chip image: {chip_img.shape}")
+        print(f"[SUCCESS] Saved chip image: {chip_img.shape}")
 
         # Compute TFRs and save images to accessible directory
-        print("🔬 Starting time-frequency analysis...")
-        print(f"   Input shapes: X={x.shape}, Y={y.shape}, Z={z.shape}")
+        progress_tracker[session_id] = {'step': 'spectrogram', 'status': 'active'}
+        print("[INFO] Starting time-frequency analysis...")
+        print(f"[INFO] Input shapes: X={x.shape}, Y={y.shape}, Z={z.shape}")
         tfr = generate_timefrequency_representation(x, y, z, fs=10000, plot=True, outdir=demo_dir, prefix='real_data_')
-        print("✅ Time-frequency analysis completed!")
+        print("[SUCCESS] Time-frequency analysis completed")
 
         # Try to load default model if present
-        print("🤖 Loading model...")
+        progress_tracker[session_id] = {'step': 'model', 'status': 'active'}
+        print("[INFO] Loading model...")
         model_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'Files', 'vgg16_optimized_model_20250903_185211.pth')
         model = None
         if os.path.exists(model_path):
-            print(f"📂 Model file found: {model_path}")
+            print(f"[INFO] Model file found: {model_path}")
             model = load_model_auto(model_path)
-            print(f"✅ Model loaded: {type(model)}")
+            print(f"[SUCCESS] Model loaded: {type(model)}")
         else:
-            print(f"❌ Model file not found: {model_path}")
+            print(f"[WARNING] Model file not found: {model_path}")
 
         if model is None:
-            print("⚠️  No model available, returning TFR results only")
+            print("[WARNING] No model available, returning TFR results only")
             files = [f for f in os.listdir(demo_dir) if f.endswith('.png') or f.endswith('.npy')]
             # Create URLs for the images
             image_urls = [f"/images/demo_{metadata['datapoint_index']}/{f}" for f in files if f.endswith('.png')]
-            print(f"📁 Generated {len(files)} files, {len(image_urls)} images")
+            print(f"[INFO] Generated {len(files)} files, {len(image_urls)} images")
+            
+            progress_tracker[session_id] = {'step': 'complete', 'status': 'completed'}
+            
             return jsonify({
                 'status': 'real_data_tfr_generated', 
                 'files': files,
                 'image_urls': image_urls,
                 'metadata': metadata,
                 'kafka_streaming': False,
+                'session_id': session_id,
                 'message': f'Processed real milling data from datapoint {metadata["datapoint_index"]} (direct mode)'
             })
 
         # Run prediction
-        print("🧠 Running model prediction...")
-        print(f"   Model type: {type(model)}")
-        print(f"   Input data shapes: X={x.shape}, Y={y.shape}, Z={z.shape}")
-        print(f"   Image shapes: work={work.shape}, tool={tool.shape}, chip={chip.shape}")
+        print("[INFO] Running model prediction...")
+        print(f"[INFO] Model type: {type(model)}")
+        print(f"[INFO] Input data shapes: X={x.shape}, Y={y.shape}, Z={z.shape}")
+        print(f"[INFO] Image shapes: work={work.shape}, tool={tool.shape}, chip={chip.shape}")
         
         try:
-            print("   🔄 Calling stream_to_prediction...")
+            print("[INFO] Calling stream_to_prediction...")
             outputs, meta = stream_to_prediction(
                 x, y, z,
                 work_img=work, tool_img=tool, chip_img=chip,
                 model=model, fs=10000, tf_target_size=(224, 224), device='cpu')
             
-            print(f"✅ Model prediction completed!")
-            print(f"   Outputs: {outputs}")
-            print(f"   Output type: {type(outputs)}")
+            print("[SUCCESS] Model prediction completed")
+            print(f"[INFO] Outputs: {outputs}")
+            print(f"[INFO] Output type: {type(outputs)}")
             if hasattr(outputs, 'shape'):
-                print(f"   Output shape: {outputs.shape}")
+                print(f"[INFO] Output shape: {outputs.shape}")
                 
         except Exception as e:
-            print(f"❌ Model prediction failed: {e}")
+            print(f"[ERROR] Model prediction failed: {e}")
             import traceback
             traceback.print_exc()
             
             # Continue without model prediction
-            print("⚠️  Continuing without model prediction...")
+            print("[WARNING] Continuing without model prediction...")
             outputs = None
             meta = {'error': str(e)}
 
@@ -1132,18 +1449,20 @@ def demo_fallback_processing(x, y, z, work, tool, chip, metadata):
         files = [f for f in os.listdir(demo_dir) if f.endswith('.png')]
         image_urls = [f"/images/demo_{metadata['datapoint_index']}/{f}" for f in files]
         
-        print(f"📁 Generated files in {demo_dir}:")
+        print(f"[INFO] Generated files in {demo_dir}:")
         for file in files:
             file_path = os.path.join(demo_dir, file)
             file_size = os.path.getsize(file_path)
-            print(f"   📄 {file}: {file_size:,} bytes")
+            print(f"[INFO] {file}: {file_size:,} bytes")
         
         # Separate spectrograms and scalograms for better display
         spectrograms = [url for url in image_urls if 'spectrogram' in url]
         scalograms = [url for url in image_urls if 'scalogram' in url]
         other_images = [url for url in image_urls if 'spectrogram' not in url and 'scalogram' not in url]
         
-        print(f"📊 Image breakdown: {len(spectrograms)} spectrograms, {len(scalograms)} scalograms, {len(other_images)} other")
+        print(f"[INFO] Image breakdown: {len(spectrograms)} spectrograms, {len(scalograms)} scalograms, {len(other_images)} other")
+        
+        progress_tracker[session_id] = {'step': 'complete', 'status': 'completed'}
         
         # Process model outputs for display
         if outputs is not None:
@@ -1172,11 +1491,20 @@ def demo_fallback_processing(x, y, z, work, tool, chip, metadata):
             'scalograms': scalograms,
             'other_images': other_images,
             'kafka_streaming': False,
+            'session_id': session_id,
             'message': f'Successfully processed real milling data from datapoint {metadata["datapoint_index"]}'
         })
     finally:
         # Don't delete the directory so images remain accessible
         pass
+
+
+@app.route('/progress/<session_id>')
+def get_progress(session_id):
+    """Get current progress for a session."""
+    if session_id in progress_tracker:
+        return jsonify(progress_tracker[session_id])
+    return jsonify({'step': 'unknown', 'status': 'not_found'}), 404
 
 
 @app.route('/images/<path:filename>')
@@ -1277,4 +1605,6 @@ def demo_stream():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Use PORT environment variable for cloud deployment (Render, Heroku, etc.)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
