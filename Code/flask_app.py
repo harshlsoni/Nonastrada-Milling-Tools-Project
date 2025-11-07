@@ -26,6 +26,38 @@ for d in search_dirs:
 # Import pipeline functions
 from Preprocessing_Pipeline import generate_timefrequency_representation, stream_to_prediction
 
+# Import explainability module
+try:
+    # Try relative import first (when running from Code directory)
+    from Explainability.simple_explainer import (
+        analyze_prediction_simple,
+        format_explanation_text,
+        create_contribution_breakdown_simple,
+        visualize_contributions_simple
+    )
+    EXPLAINABILITY_AVAILABLE = True
+    print("[INFO] Explainability module loaded successfully")
+except ImportError:
+    try:
+        # Try absolute import (when running from project root)
+        import sys
+        import os
+        code_dir = os.path.dirname(os.path.abspath(__file__))
+        if code_dir not in sys.path:
+            sys.path.insert(0, code_dir)
+        
+        from Explainability.simple_explainer import (
+            analyze_prediction_simple,
+            format_explanation_text,
+            create_contribution_breakdown_simple,
+            visualize_contributions_simple
+        )
+        EXPLAINABILITY_AVAILABLE = True
+        print("[INFO] Explainability module loaded successfully (absolute path)")
+    except ImportError as e:
+        print(f"[WARNING] Explainability module not available: {e}")
+        EXPLAINABILITY_AVAILABLE = False
+
 app = Flask(__name__)
 
 # Use an uploads folder outside the read-only code tree so the container can write files.
@@ -534,6 +566,15 @@ function updateResults(data) {
       if (pred.predicted_label) {
         html += '<p><strong>Prediction:</strong> <span style="font-size: 1.2em; color: #007bff;">' + pred.predicted_label + '</span></p>';
         html += '<p><strong>Confidence:</strong> ' + (pred.confidence * 100).toFixed(1) + '%</p>';
+        
+        // Add confidence level indicator
+        if (pred.explanation && pred.explanation.confidence_level) {
+          const confLevel = pred.explanation.confidence_level;
+          let confColor = '#28a745';  // green
+          if (confLevel === 'Medium') confColor = '#ffc107';  // yellow
+          if (confLevel === 'Low') confColor = '#dc3545';  // red
+          html += '<p><strong>Reliability:</strong> <span style="color: ' + confColor + ';">' + confLevel + '</span></p>';
+        }
       }
       
       if (pred.class_names && pred.probabilities) {
@@ -552,9 +593,59 @@ function updateResults(data) {
         html += '<p><strong>Sample ID:</strong> ' + pred.image_id + '</p>';
       }
       
+      // Show explainability information
+      if (pred.explanation) {
+        html += '<div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-left: 4px solid #007bff; border-radius: 4px;">';
+        html += '<h4 style="margin-top: 0;">Explanation</h4>';
+        
+        // Key indicators
+        if (pred.explanation.key_indicators && pred.explanation.key_indicators.length > 0) {
+          html += '<p><strong>Key Indicators:</strong></p>';
+          html += '<ul style="margin: 10px 0;">';
+          pred.explanation.key_indicators.forEach(indicator => {
+            html += '<li>' + indicator + '</li>';
+          });
+          html += '</ul>';
+        }
+        
+        // Recommendation
+        if (pred.explanation.recommendation) {
+          html += '<p><strong>Recommendation:</strong></p>';
+          html += '<p style="padding: 10px; background: white; border-radius: 4px; border-left: 3px solid #28a745;">';
+          html += pred.explanation.recommendation;
+          html += '</p>';
+        }
+        
+        html += '</div>';
+      }
+      
+      // Show contribution breakdown
+      if (pred.contributions) {
+        html += '<div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-left: 4px solid #6c757d; border-radius: 4px;">';
+        html += '<h4 style="margin-top: 0;">Contribution Breakdown</h4>';
+        html += '<p style="font-size: 0.9em; color: #666;">Which inputs influenced this prediction:</p>';
+        
+        // Create bar chart
+        const sortedContribs = Object.entries(pred.contributions).sort((a, b) => b[1] - a[1]);
+        sortedContribs.forEach(([name, value]) => {
+          const barWidth = value;
+          html += '<div style="margin: 10px 0;">';
+          html += '<div style="display: flex; justify-content: space-between; margin-bottom: 5px;">';
+          html += '<span style="font-weight: 500;">' + name + '</span>';
+          html += '<span style="color: #666;">' + value.toFixed(1) + '%</span>';
+          html += '</div>';
+          html += '<div style="background: #e0e0e0; height: 20px; border-radius: 4px; overflow: hidden;">';
+          html += '<div style="background: linear-gradient(90deg, #007bff, #0056b3); height: 100%; width: ' + barWidth + '%; transition: width 0.5s;"></div>';
+          html += '</div>';
+          html += '</div>';
+        });
+        
+        html += '</div>';
+      }
+      
       // Show raw values in details
       if (pred.raw_values) {
-        html += '<details><summary>Raw Model Output</summary>';
+        html += '<details style="margin-top: 15px;"><summary>Raw Model Output</summary>';
         html += '<p>Values: [' + pred.raw_values.map(v => v.toFixed(4)).join(', ') + ']</p>';
         html += '<p>Shape: ' + JSON.stringify(pred.shape) + '</p>';
         html += '<p>Range: [' + pred.min_value.toFixed(4) + ', ' + pred.max_value.toFixed(4) + ']</p>';
@@ -1475,6 +1566,21 @@ def demo_fallback_processing(x, y, z, work, tool, chip, metadata, session_id):
             
             # Interpret predictions if possible
             prediction_interpretation = interpret_model_outputs(outputs, metadata.get('image_id'))
+            
+            # Add explainability if available
+            if EXPLAINABILITY_AVAILABLE and prediction_interpretation:
+                try:
+                    explanation = analyze_prediction_simple(prediction_interpretation)
+                    contributions = create_contribution_breakdown_simple(prediction_interpretation)
+                    
+                    prediction_interpretation['explanation'] = explanation
+                    prediction_interpretation['contributions'] = contributions
+                    prediction_interpretation['explanation_text'] = format_explanation_text(explanation)
+                    prediction_interpretation['contribution_text'] = visualize_contributions_simple(contributions)
+                    
+                    print("[INFO] Explainability analysis added to prediction")
+                except Exception as e:
+                    print(f"[WARNING] Explainability analysis failed: {e}")
         else:
             prediction_values = None
             prediction_interpretation = {'error': 'Model prediction failed', 'message': meta.get('error', 'Unknown error')}
