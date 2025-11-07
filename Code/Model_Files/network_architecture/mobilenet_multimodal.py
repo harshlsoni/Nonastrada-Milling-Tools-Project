@@ -1,0 +1,51 @@
+import torch
+import torch.nn as nn
+import torchvision.models as models
+
+
+class MobileNetMultiModal(nn.Module):
+    def __init__(self, num_classes: int, pretrained: bool = True):
+        super(MobileNetMultiModal, self).__init__()
+        
+        # Load pretrained MobileNetV2
+        weights = models.MobileNet_V2_Weights.IMAGENET1K_V1 if pretrained else None
+        mobilenet = models.mobilenet_v2(weights=weights)
+        # Get feature dimension before removing classifier
+        self.feature_dim = mobilenet.classifier[1].in_features  # MobileNetV2: 1280
+        # Use only feature extraction part
+        self.backbone = mobilenet.features
+        # Add adaptive pooling to ensure consistent output size
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        
+        # Freeze all layers except the last TWO CNN blocks (16, 17 and 18)
+        for name, param in self.backbone.named_parameters():
+            if '16.' in name or '17.' in name or '18.' in name:  # Last three inverted residual blocks
+                param.requires_grad = True
+            else:
+                param.requires_grad = False
+        
+        print("MobileNetV2: Frozen all layers except features.16, features.17 and features.18 (last TWO+ CNN blocks)")
+        
+        # Fusion layer for 9 modalities
+        self.fusion_fc = nn.Sequential(
+            nn.Linear(9 * self.feature_dim, 512),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(256, num_classes)
+        )
+        
+    def forward(self, x_dict):
+        features = []
+        for _, x in x_dict.items():
+            feat = self.backbone(x)  # Extract features using MobileNet backbone
+            feat = self.avgpool(feat)  # Apply adaptive pooling: [batch_size, 1280, 1, 1]
+            feat = feat.view(feat.size(0), -1)  # Flatten: [batch_size, 1280]
+            features.append(feat)
+        
+        # Concatenate features from all modalities
+        fused = torch.cat(features, dim=1)  # Shape: [batch_size, 9 * 1280]
+        out = self.fusion_fc(fused)
+        return out
