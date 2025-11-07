@@ -1,0 +1,12 @@
+# Simplified Docker Compose - Flask App Only (No Kafka)
+services:
+  app:
+    build: .
+    environment:
+      FLASK_ENV: production
+      UPLOAD_FOLDER: /app/uploads
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./uploads:/app/uploads
+    restart: unless-stopped
