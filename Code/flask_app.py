@@ -740,6 +740,18 @@ function runRealTimeDemo() {
   
   let sessionId = null;
   let progressInterval = null;
+  let simulatedProgress = 0;
+  
+  // Simulate smooth progress while waiting for backend
+  function simulateProgress() {
+    const steps = ['init', 'extract', 'spectrogram', 'scalogram', 'images', 'model'];
+    const currentStepIndex = Math.floor(simulatedProgress / (100 / steps.length));
+    
+    if (currentStepIndex < steps.length) {
+      updateProgress(steps[currentStepIndex], 'active');
+      simulatedProgress += 2; // Increment by 2% each time
+    }
+  }
   
   // Function to poll backend progress
   function pollProgress() {
@@ -750,12 +762,25 @@ function runRealTimeDemo() {
       .then(progressData => {
         if (progressData.step && progressData.status) {
           updateProgress(progressData.step, progressData.status);
+          // Stop simulation when we get real progress
+          if (progressInterval) {
+            clearInterval(progressInterval);
+            progressInterval = null;
+          }
         }
       })
       .catch(error => {
         console.log('Progress poll error:', error);
       });
   }
+  
+  // Start simulated progress
+  progressInterval = setInterval(() => {
+    simulateProgress();
+    if (sessionId) {
+      pollProgress(); // Also try to get real progress
+    }
+  }, 200);
   
   // Start the demo
   fetch('/demo')
@@ -771,37 +796,48 @@ function runRealTimeDemo() {
       // Get session ID and start polling
       sessionId = data.session_id;
       if (sessionId) {
-        progressInterval = setInterval(pollProgress, 200); // Poll every 200ms
+        progressInterval = setInterval(pollProgress, 100); // Poll every 100ms for better sync
+        pollProgress(); // Poll immediately
       }
       
-      // Wait for completion
-      setTimeout(() => {
-        if (progressInterval) {
-          clearInterval(progressInterval);
-        }
-        
-        // Check if we have missing images
-        if (data.error_type === 'missing_images' || data.status === 'tfr_only') {
-          updateProgress('complete', 'error');
-          updateStatus('Analysis completed with warnings - see details below', 'error');
-          updateResults(data);
-          setTimeout(hideProgress, 3000);
-        } else if (data.status.includes('success')) {
-          updateProgress('complete', 'completed');
-          updateStatus('Real-time demo completed successfully', 'success');
-          updateResults(data);
-          setTimeout(hideProgress, 2000);
-        } else if (data.status.includes('partial')) {
-          updateStatus('Data streamed, waiting for processing...', 'processing');
-          updateResults(data);
-          pollForResults(data.sample_id);
-        } else {
-          updateProgress('complete', 'completed');
-          updateStatus('Demo completed successfully', 'success');
-          updateResults(data);
-          setTimeout(hideProgress, 2000);
-        }
-      }, 500);
+      // Stop polling immediately since demo is complete
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
+      
+      // One final poll to get latest state
+      if (sessionId) {
+        fetch('/progress/' + sessionId)
+          .then(response => response.json())
+          .then(progressData => {
+            if (progressData.step && progressData.status) {
+              updateProgress(progressData.step, progressData.status);
+            }
+          })
+          .catch(() => {});
+      }
+      
+      // Show results immediately
+      if (data.error_type === 'missing_images' || data.status === 'tfr_only') {
+        updateProgress('complete', 'error');
+        updateStatus('Analysis completed with warnings - see details below', 'error');
+        updateResults(data);
+        setTimeout(hideProgress, 3000);
+      } else if (data.status.includes('success')) {
+        updateProgress('complete', 'completed');
+        updateStatus('Real-time demo completed successfully', 'success');
+        updateResults(data);
+        setTimeout(hideProgress, 2000);
+      } else if (data.status.includes('partial')) {
+        updateStatus('Data streamed, waiting for processing...', 'processing');
+        updateResults(data);
+        pollForResults(data.sample_id);
+      } else {
+        updateProgress('complete', 'completed');
+        updateStatus('Demo completed successfully', 'success');
+        updateResults(data);
+        setTimeout(hideProgress, 2000);
+      }
     })
     .catch(error => {
       if (progressInterval) {
