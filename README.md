@@ -2,11 +2,27 @@
 
 An intelligent manufacturing system that analyzes milling force data to predict tool wear using deep learning and signal processing.
 
+[![Docker Hub](https://img.shields.io/badge/Docker%20Hub-ghostfreak538%2Fnonastrada__project-blue?logo=docker)](https://hub.docker.com/r/ghostfreak538/nonastrada_project)
+[![Docker Image](https://img.shields.io/badge/docker%20pull-ghostfreak538%2Fnonastrada__project-blue)](https://hub.docker.com/r/ghostfreak538/nonastrada_project)
+
 ---
 
 ## Quick Start
 
 ### Deploy with Docker (Recommended)
+
+**Option 1: Use Pre-built Image from Docker Hub**
+
+```bash
+# Pull and run the image
+docker pull ghostfreak538/nonastrada_project:latest
+docker run -d -p 5000:5000 -v $(pwd)/uploads:/app/uploads ghostfreak538/nonastrada_project:latest
+
+# Or use docker-compose
+docker-compose up -d
+```
+
+**Option 2: Build Locally**
 
 ```powershell
 # Windows
@@ -15,12 +31,12 @@ An intelligent manufacturing system that analyzes milling force data to predict 
 
 ```bash
 # Linux/Mac
-docker-compose up -d
+docker-compose up -d --build
 ```
 
 Then open: **http://localhost:5000**
 
-### Run Locally
+### Run Locally (Without Docker)
 
 ```bash
 # Install dependencies
@@ -308,13 +324,25 @@ python custom_data/test_custom_data.py --all
 
 ## Deployment Options
 
-- **Local**: Docker Compose or Python directly
+### Docker Hub
+Pre-built image available: **`ghostfreak538/nonastrada_project:latest`**
+
+```bash
+docker pull ghostfreak538/nonastrada_project:latest
+docker run -d -p 5000:5000 ghostfreak538/nonastrada_project:latest
+```
+
+### Cloud Platforms
 - **AWS**: EC2, ECS, Elastic Beanstalk
 - **Google Cloud**: Cloud Run, Compute Engine
 - **Azure**: Container Instances, App Service
 - **Heroku**: Container deployment
 - **DigitalOcean**: App Platform
 - **Render**: Web Service (see RENDER_DEPLOYMENT.md)
+
+### Local
+- **Docker Compose**: `docker-compose up -d`
+- **Python**: `python Code/flask_app.py`
 
 ---
 
@@ -437,11 +465,23 @@ Built for manufacturing intelligence and predictive maintenance.
 
 ## Ready to Deploy!
 
-```bash
-# Quick start
-docker-compose up -d
+### Quick Start with Docker Hub
 
-# Or run locally
+```bash
+# Pull and run the pre-built image
+docker pull ghostfreak538/nonastrada_project:latest
+docker run -d -p 5000:5000 -v $(pwd)/uploads:/app/uploads ghostfreak538/nonastrada_project:latest
+```
+
+### Or use Docker Compose
+
+```bash
+docker-compose up -d
+```
+
+### Or run locally
+
+```bash
 python Code/flask_app.py
 ```
 
