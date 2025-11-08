@@ -16,7 +16,8 @@ An intelligent manufacturing system that analyzes milling force data to predict 
 ```bash
 # Pull and run the image
 docker pull ghostfreak538/nonastrada_project:latest
-docker run -d -p 5000:5000 -v $(pwd)/uploads:/app/uploads ghostfreak538/nonastrada_project:latest
+mkdir uploads
+docker run -d -p 5000:5000 -v %cd%/uploads:/app/uploads --restart unless-stopped --name milling-monitor ghostfreak538/nonastrada_project:latest
 
 # Or use docker-compose
 docker-compose up -d
@@ -492,3 +493,4 @@ python Code/flask_app.py
 ---
 
 **Manufacturing Intelligence • Predictive Maintenance • Deep Learning**
+
