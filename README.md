@@ -19,8 +19,6 @@ docker pull ghostfreak538/nonastrada_project:latest
 mkdir uploads
 docker run -d -p 5000:5000 -v %cd%/uploads:/app/uploads --restart unless-stopped --name milling-monitor ghostfreak538/nonastrada_project:latest
 
-# Or use docker-compose
-docker-compose up -d
 ```
 
 **Option 2: Build Locally**
@@ -493,4 +491,5 @@ python Code/flask_app.py
 ---
 
 **Manufacturing Intelligence • Predictive Maintenance • Deep Learning**
+
 
